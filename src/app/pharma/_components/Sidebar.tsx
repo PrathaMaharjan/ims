@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     ChevronLeft, ChevronRight, LogOut, Menu, X,
-    LayoutDashboard, Boxes,
+    LayoutDashboard, Boxes, Receipt,
     type LucideIcon,
 } from 'lucide-react';
-type IconKey = 'dashboard' | 'inventory';
+type IconKey = 'dashboard' | 'inventory' | 'purchase';
 
 type NavItem = {
     match: string;
@@ -21,11 +21,13 @@ type NavItem = {
 const iconMap: Record<IconKey, LucideIcon> = {
     dashboard: LayoutDashboard,
     inventory: Boxes,
+    purchase: Receipt,
 };
 
 const defaultItems: NavItem[] = [
     { match: '/pharma', href: '/pharma', label: 'Dashboard', icon: 'dashboard' },
     { match: '/pharma/inventory', href: '/pharma/inventory', label: 'Inventory', icon: 'inventory' },
+    { match: '/pharma/purchase', href: '/pharma/purchase', label: 'Purchase', icon: 'purchase' },
 ];
 
 type SidebarUser = { name: string; email?: string };

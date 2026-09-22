@@ -8,6 +8,8 @@ import {
     LayoutDashboard, Boxes,
     type LucideIcon,
 } from 'lucide-react';
+import { useAuth } from '@/context/auth-context';
+
 type IconKey = 'dashboard' | 'inventory';
 
 type NavItem = {
@@ -133,7 +135,15 @@ function NavList({
     );
 }
 
-function UserFooter({ user, collapsed }: { user: SidebarUser; collapsed: boolean }) {
+function UserFooter({
+    user,
+    collapsed,
+    onLogout,
+}: {
+    user: SidebarUser;
+    collapsed: boolean;
+    onLogout: () => void;
+}) {
     const initials = user.name
         .split(' ')
         .filter(Boolean)
@@ -162,6 +172,7 @@ function UserFooter({ user, collapsed }: { user: SidebarUser; collapsed: boolean
             </div>
 
             <button
+                onClick={onLogout}
                 type="button"
                 title={collapsed ? 'Log out' : undefined}
                 className={`flex w-full items-center gap-3.5 rounded-full py-3.5 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-red-300 ${collapsed ? 'justify-center' : 'px-4'
@@ -179,6 +190,15 @@ function UserFooter({ user, collapsed }: { user: SidebarUser; collapsed: boolean
 export function Sidebar({ items = defaultItems, brandName, logoUrl, user }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
+    const { logout } = useAuth();
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+        } catch (error) {
+            console.error('Error occurred while logging out:', error);
+        }
+    };
 
     return (
         <>
@@ -197,7 +217,7 @@ export function Sidebar({ items = defaultItems, brandName, logoUrl, user }: Side
 
                 <Brand brandName={brandName} logoUrl={logoUrl} collapsed={collapsed} />
                 <NavList items={items} collapsed={collapsed} />
-                <UserFooter user={user} collapsed={collapsed} />
+                <UserFooter user={user} collapsed={collapsed} onLogout={handleLogout} />
             </aside>
 
             {/* Mobile top bar */}
@@ -226,7 +246,7 @@ export function Sidebar({ items = defaultItems, brandName, logoUrl, user }: Side
                         </button>
                         <Brand brandName={brandName} logoUrl={logoUrl} collapsed={false} />
                         <NavList items={items} collapsed={false} onNavigate={() => setMobileOpen(false)} />
-                        <UserFooter user={user} collapsed={false} />
+                        <UserFooter user={user} collapsed={false} onLogout={handleLogout} />
                     </aside>
                 </div>
             )}

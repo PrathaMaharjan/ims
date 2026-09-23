@@ -8,12 +8,9 @@ import {
     LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet,
     type LucideIcon,
 } from 'lucide-react';
-<<<<<<< HEAD
 type IconKey = 'dashboard' | 'inventory' | 'purchase' | 'sales' | 'suppliers' | 'expense';
-=======
 import { useAuth } from '@/context/auth-context';
-type IconKey = 'dashboard' | 'inventory' | 'purchase' | 'sales';
->>>>>>> 9ac2654949e33b59f71afa2c208ac89b9d9e609d
+
 
 type NavItem = {
     match: string;

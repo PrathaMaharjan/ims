@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Plus, X, Pencil, Trash2, Search,
   Package, PackageCheck, PackageX, AlertTriangle,
-  ChevronDown, ChevronLeft, ChevronRight, Check, Boxes, ListFilter,
+  ChevronLeft, ChevronRight, Check, Boxes, ListFilter,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 
@@ -13,22 +13,23 @@ import { api } from "@/lib/api-client";
 /* ------------------------------------------------------------------ */
 
 type StockLevel = "in_stock" | "low_stock" | "out_of_stock";
-type Num = number | ""; // number inputs can be empty while typing
+type Num = number | "";
 
-export interface ItemBatch {
+// Matches GET /products/:id/batches response shape
+export interface ApiBatch {
   id: string;
-  batchNo: string;
-  stock: number;
-  unit: string;
-  mfgDate?: string;
-  expDate: string;
-  purchaseRate: number;
-  mrp: number;
-  salePrice: number;
-  supplier?: string;
+  batchNumber: string;
+  manufacturingDate: string | null;
+  expiryDate: string;
+  purchasePrice: string;
+  mrp: string;
+  salePrice: string | null;
+  quantityReceived: number;
+  quantityAvailable: number;
+  status: "ACTIVE" | "NEAR_EXPIRY" | "EXPIRED" | "RECALLED" | "QUARANTINED" | "DEPLETED";
+  supplier?: { id: string; name: string } | null;
 }
 
-/** Everything the user can edit in the Add / Edit Item form (stock is managed via batches, not manually entered here). */
 interface ItemForm {
   name: string;
   brand: string;
@@ -36,11 +37,14 @@ interface ItemForm {
   alias: string;
   hsnCode: string;
   description: string;
-  unit: string; // main unit
-  altUnit: string; // "" = none
+  unit: string;
+  altUnit: string;
   minStockLevel: Num;
 }
 
+// Matches GET /products (list) — includes the real stockQuantity/totalBatches
+// summary computed server-side; the raw batches array is NOT part of the list
+// response, only fetched on demand when viewing one item.
 export interface Item {
   id: string;
   name: string;
@@ -52,7 +56,9 @@ export interface Item {
   unit: string;
   altUnit: string;
   minStockLevel: number;
-  batches: ItemBatch[];
+  stockQuantity: number;
+  totalBatches: number;
+  totalStock: number;
 }
 
 interface Category {
@@ -60,8 +66,6 @@ interface Category {
   name: string;
 }
 
-// Matches what GET /api/product actually returns — batches/stock are not
-// part of the product record, so they're left out here (tracked separately).
 interface ApiProduct {
   id: string;
   name: string;
@@ -72,38 +76,27 @@ interface ApiProduct {
   unit: string;
   alternativeUnit: string | null;
   lowStockThreshold: number | null;
+  stockQuantity: number;
   isActive: boolean;
   description: string | null;
+  totalBatches: number;
+  totalStock: number;
 }
 
 /* ------------------------------------------------------------------ */
-/* Defaults & seed data                                                */
+/* Defaults                                                            */
 /* ------------------------------------------------------------------ */
 
 const DEFAULT_UNITS = ["Pcs", "Tab", "Strip", "Box", "Bottle", "Vial", "Kg", "L", "ml"];
 
 const DEFAULT_BRANDS = [
-  "Cipla",
-  "Sun Pharma",
-  "Torrent Pharma",
-  "Alkem",
-  "Abbott",
-  "Deurali-Janta",
-  "Nepal Pharmaceuticals",
-  "Apex Healthcare",
-  "Generic",
+  "Cipla", "Sun Pharma", "Torrent Pharma", "Alkem", "Abbott",
+  "Deurali-Janta", "Nepal Pharmaceuticals", "Apex Healthcare", "Generic",
 ];
 
 const EMPTY_FORM: ItemForm = {
-  name: "",
-  brand: "",
-  category: "",
-  alias: "",
-  hsnCode: "",
-  description: "",
-  unit: "Pcs",
-  altUnit: "",
-  minStockLevel: "",
+  name: "", brand: "", category: "", alias: "", hsnCode: "",
+  description: "", unit: "Pcs", altUnit: "", minStockLevel: "",
 };
 
 /* ------------------------------------------------------------------ */
@@ -113,10 +106,7 @@ const EMPTY_FORM: ItemForm = {
 const n = (v: Num) => (v === "" ? 0 : v);
 const rs = (v: number) => `Rs. ${v.toFixed(2)}`;
 
-// Maps an API product record onto the local Item shape. Batches aren't part
-// of the product API yet, so they're carried over from local state as-is
-// (empty for a freshly loaded product) instead of being fetched.
-function toItem(p: ApiProduct, categoryNameById: Map<string, string>, batches: ItemBatch[] = []): Item {
+function toItem(p: ApiProduct, categoryNameById: Map<string, string>): Item {
   return {
     id: p.id,
     name: p.name,
@@ -128,19 +118,16 @@ function toItem(p: ApiProduct, categoryNameById: Map<string, string>, batches: I
     unit: p.unit,
     altUnit: p.alternativeUnit ?? "",
     minStockLevel: p.lowStockThreshold ?? 0,
-    batches,
+    stockQuantity: p.stockQuantity,
+    totalBatches: p.totalBatches,
+    totalStock: p.totalStock,
   };
 }
 
-/** Calculates total stock of an item across all its active batches */
-function getItemTotalStock(item: Item): number {
-  return item.batches.reduce((sum, b) => sum + (b.stock || 0), 0);
-}
-
+// Real, cached-column stock — the same number the backend uses for purchase/sale math.
 function getStockLevel(item: Item): StockLevel {
-  const stock = getItemTotalStock(item);
-  if (stock <= 0) return "out_of_stock";
-  if (stock <= item.minStockLevel) return "low_stock";
+  if (item.stockQuantity <= 0) return "out_of_stock";
+  if (item.stockQuantity <= item.minStockLevel) return "low_stock";
   return "in_stock";
 }
 
@@ -153,7 +140,7 @@ const STOCK_STYLE: Record<StockLevel, { bg: string; text: string; dot: string; l
 function getBatchExpiryStatus(expDate: string): { label: string; cls: string } {
   if (!expDate) return { label: "No Date", cls: "text-slate-500 bg-slate-100 border-slate-200" };
   const today = new Date();
-  const exp = new Date(expDate + "-01");
+  const exp = new Date(expDate);
   const diffMonths = (exp.getFullYear() - today.getFullYear()) * 12 + (exp.getMonth() - today.getMonth());
   if (diffMonths < 0) return { label: "Expired", cls: "text-red-700 bg-red-50 border-red-200" };
   if (diffMonths <= 3) return { label: "Expiring Soon", cls: "text-amber-700 bg-amber-50 border-amber-200" };
@@ -161,7 +148,7 @@ function getBatchExpiryStatus(expDate: string): { label: string; cls: string } {
 }
 
 /* ------------------------------------------------------------------ */
-/* Small form building blocks                                          */
+/* Small form building blocks (unchanged from before)                  */
 /* ------------------------------------------------------------------ */
 
 const inputCls =
@@ -196,18 +183,8 @@ function NumInput({ value, onChange, step = "1", placeholder }: {
   );
 }
 
-/**
- * A select with an inline "+" button to add a new option,
- * plus a quick delete button for selected option and a list management popover.
- */
 function CreatableSelect({
-  value,
-  options,
-  onChange,
-  onCreate,
-  onDelete,
-  noun,
-  noneLabel,
+  value, options, onChange, onCreate, onDelete, noun, noneLabel,
 }: {
   value: string;
   options: string[];
@@ -229,9 +206,7 @@ function CreatableSelect({
         setManaging(false);
       }
     }
-    if (managing) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
+    if (managing) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [managing]);
 
@@ -246,9 +221,7 @@ function CreatableSelect({
     return (
       <div className="flex gap-2">
         <input
-          autoFocus
-          value={draft}
-          placeholder={`New ${noun}`}
+          autoFocus value={draft} placeholder={`New ${noun}`}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {
             if (e.key === "Enter") { e.preventDefault(); commit(); }
@@ -268,75 +241,47 @@ function CreatableSelect({
     );
   }
 
-  const filteredManageOptions = options.filter(o =>
-    o.toLowerCase().includes(manageSearch.toLowerCase())
-  );
+  const filteredManageOptions = options.filter(o => o.toLowerCase().includes(manageSearch.toLowerCase()));
 
   return (
     <div className="relative flex gap-2">
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className={inputCls}
-      >
+      <select value={value} onChange={e => onChange(e.target.value)} className={inputCls}>
         {noneLabel !== undefined && <option value="">{noneLabel}</option>}
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
 
-      {/* Quick Add Button */}
-      <button
-        type="button"
-        onClick={() => { setAdding(true); setManaging(false); }}
-        title={`Add new ${noun}`}
-        className="shrink-0 rounded-lg border border-slate-200 px-3 text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
-      >
+      <button type="button" onClick={() => { setAdding(true); setManaging(false); }} title={`Add new ${noun}`}
+        className="shrink-0 rounded-lg border border-slate-200 px-3 text-[#044d73] hover:bg-[#044d73]/10 transition-colors">
         <Plus className="h-4 w-4" />
       </button>
 
-      {/* Manage List Popover Button (user can delete from here) */}
       {onDelete && options.length > 0 && (
         <button
-          type="button"
-          onClick={() => setManaging(p => !p)}
-          title={`Manage / Delete ${noun}s`}
+          type="button" onClick={() => setManaging(p => !p)} title={`Manage / Delete ${noun}s`}
           className={`shrink-0 rounded-lg border px-2.5 transition-colors ${
-            managing
-              ? "border-[#044d73] bg-[#044d73] text-white"
-              : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
+            managing ? "border-[#044d73] bg-[#044d73] text-white" : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
           }`}
         >
           <ListFilter className="h-4 w-4" />
         </button>
       )}
 
-      {/* Manage Popover Dropdown */}
       {managing && onDelete && (
-        <div
-          ref={manageRef}
-          className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl animate-in fade-in-50 zoom-in-95 duration-100"
-        >
+        <div ref={manageRef} className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-[#044d73]">
               Manage {noun}s ({options.length})
             </span>
-            <button
-              type="button"
-              onClick={() => setManaging(false)}
-              className="p-0.5 text-slate-400 hover:text-slate-600 rounded"
-            >
+            <button type="button" onClick={() => setManaging(false)} className="p-0.5 text-slate-400 hover:text-slate-600 rounded">
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
           {options.length > 5 && (
             <div className="mb-2">
-              <input
-                type="text"
-                value={manageSearch}
-                onChange={e => setManageSearch(e.target.value)}
+              <input type="text" value={manageSearch} onChange={e => setManageSearch(e.target.value)}
                 placeholder={`Filter ${noun}s...`}
-                className="h-7 w-full rounded border border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#044d73]"
-              />
+                className="h-7 w-full rounded border border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#044d73]" />
             </div>
           )}
 
@@ -345,19 +290,12 @@ function CreatableSelect({
               <p className="p-2 text-center text-xs text-slate-400">No {noun}s found</p>
             ) : (
               filteredManageOptions.map(opt => (
-                <div
-                  key={opt}
-                  className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs hover:bg-slate-50 transition-colors"
-                >
+                <div key={opt} className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs hover:bg-slate-50 transition-colors">
                   <span className={`truncate font-medium ${value === opt ? "text-[#044d73] font-semibold" : "text-slate-700"}`}>
                     {opt}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(opt)}
-                    title={`Delete "${opt}"`}
-                    className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                  >
+                  <button type="button" onClick={() => onDelete(opt)} title={`Delete "${opt}"`}
+                    className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -380,8 +318,6 @@ export default function InventoryPage() {
   const [brands, setBrands] = useState<string[]>(DEFAULT_BRANDS);
   const [categories, setCategories] = useState<Category[]>([]);
 
-  // Real data from the API — products and categories only; batches/stock
-  // stay local for now since there's no batches endpoint wired up yet.
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
@@ -390,6 +326,7 @@ export default function InventoryPage() {
       setLoadingCatalog(true);
       setCatalogError(null);
       try {
+        // Products and categories are independent — fetch in parallel.
         const [productsRes, categoriesRes] = await Promise.all([
           api.get("/api/product"),
           api.get("/api/product/categories"),
@@ -420,6 +357,12 @@ export default function InventoryPage() {
   const [viewingItem, setViewingItem] = useState<Item | null>(null);
   const [form, setForm] = useState<ItemForm>(EMPTY_FORM);
 
+  // Batches for the item currently being viewed — fetched on demand,
+  // not eagerly for every item in the list (would be N+1 otherwise).
+  const [viewingBatches, setViewingBatches] = useState<ApiBatch[]>([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+  const [batchesError, setBatchesError] = useState<string | null>(null);
+
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const stats = useMemo(() => ({
@@ -436,8 +379,7 @@ export default function InventoryPage() {
       (i.brand && i.brand.toLowerCase().includes(q)) ||
       (i.category && i.category.toLowerCase().includes(q)) ||
       i.alias.toLowerCase().includes(q) ||
-      i.hsnCode.toLowerCase().includes(q) ||
-      i.batches.some(b => b.batchNo.toLowerCase().includes(q));
+      i.hsnCode.toLowerCase().includes(q);
     const matchStock = stockFilter === "ALL" || getStockLevel(i) === stockFilter;
     const matchCategory = categoryFilter === "ALL" || i.category === categoryFilter;
     return matchSearch && matchStock && matchCategory;
@@ -573,7 +515,7 @@ export default function InventoryPage() {
         const res = await api.patch(`/api/product/${editingItem.id}`, payload);
         const updated: ApiProduct = res.data.product;
         setItems(prev => prev.map(i => (
-          i.id === editingItem.id ? toItem(updated, categoryNameById, editingItem.batches) : i
+          i.id === editingItem.id ? toItem(updated, categoryNameById) : i
         )));
       } else {
         const res = await api.post("/api/product", payload);
@@ -596,6 +538,22 @@ export default function InventoryPage() {
       setCatalogError("Failed to delete item. Please try again.");
     } finally {
       setDeleteConfirmId(null);
+    }
+  }
+
+  // Opens the view modal and fetches this product's real batches on demand.
+  async function openView(item: Item) {
+    setViewingItem(item);
+    setViewingBatches([]);
+    setBatchesError(null);
+    setLoadingBatches(true);
+    try {
+      const res = await api.get(`/api/batches/${item.id}`);
+      setViewingBatches(res.data.batches);
+    } catch {
+      setBatchesError("Failed to load batches for this item.");
+    } finally {
+      setLoadingBatches(false);
     }
   }
 
@@ -649,7 +607,7 @@ export default function InventoryPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by name, brand, category, HSN, batch"
+            placeholder="Search by name, brand, category, HSN"
             value={search}
             onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
             className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
@@ -677,7 +635,7 @@ export default function InventoryPage() {
         </select>
       </div>
 
-      {/* Table — Clicking anywhere on an item opens all its details & batches */}
+      {/* Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -695,20 +653,17 @@ export default function InventoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {paginated.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-16 text-center text-sm text-slate-400">
-                    No items match criteria.
-                  </td>
-                </tr>
+              {loadingCatalog ? (
+                <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">Loading inventory...</td></tr>
+              ) : paginated.length === 0 ? (
+                <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">No items match criteria.</td></tr>
               ) : paginated.map(item => {
-                const totalStock = getItemTotalStock(item);
                 const stockLevel = getStockLevel(item);
                 const stockStyle = STOCK_STYLE[stockLevel];
                 return (
                   <tr
                     key={item.id}
-                    onClick={() => setViewingItem(item)}
+                    onClick={() => openView(item)}
                     className="hover:bg-slate-50/80 transition-colors text-slate-700 cursor-pointer group"
                   >
                     <td className="py-3 px-4">
@@ -742,13 +697,13 @@ export default function InventoryPage() {
                     </td>
                     <td className="py-3 px-4">
                       <span className="font-bold text-slate-800">
-                        {totalStock} <span className="text-xs font-normal text-slate-400">{item.unit}</span>
+                        {item.stockQuantity} <span className="text-xs font-normal text-slate-400">{item.unit}</span>
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      {item.batches.length > 0 ? (
+                      {item.totalBatches > 0 ? (
                         <span className="inline-flex items-center gap-1 rounded-md bg-[#044d73]/10 px-2 py-0.5 text-xs font-medium text-[#044d73]">
-                          <Boxes className="w-3 h-3" /> {item.batches.length} batch{item.batches.length !== 1 ? "es" : ""}
+                          <Boxes className="w-3 h-3" /> {item.totalBatches} batch{item.totalBatches !== 1 ? "es" : ""}
                         </span>
                       ) : (
                         <span className="text-xs text-slate-400">0 batches</span>
@@ -765,10 +720,7 @@ export default function InventoryPage() {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit(item);
-                          }}
+                          onClick={(e) => { e.stopPropagation(); openEdit(item); }}
                           title="Edit Item"
                           className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
                         >
@@ -776,10 +728,7 @@ export default function InventoryPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteConfirmId(item.id);
-                          }}
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(item.id); }}
                           title="Delete"
                           className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                         >
@@ -794,7 +743,6 @@ export default function InventoryPage() {
           </table>
         </div>
 
-        {/* Footer Pagination Controls */}
         {filtered.length > 0 && (
           <div className="flex flex-col gap-4 items-center justify-between border-t border-slate-100 bg-white px-6 py-4 sm:flex-row">
             <span className="text-xs text-slate-400">
@@ -855,7 +803,6 @@ export default function InventoryPage() {
 
       {/* View Item Details Modal (Complete Info & Batches) */}
       {viewingItem && (() => {
-        const totalStock = getItemTotalStock(viewingItem);
         const stockLevel = getStockLevel(viewingItem);
         const stockStyle = STOCK_STYLE[stockLevel];
 
@@ -865,10 +812,9 @@ export default function InventoryPage() {
             onClick={() => setViewingItem(null)}
           >
             <div
-              className="bg-white border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+              className="bg-white border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
               onClick={e => e.stopPropagation()}
             >
-              {/* Modal Header */}
               <div className="relative flex shrink-0 items-center justify-between p-6 bg-[#044d73] text-white">
                 <div className="flex items-center gap-3.5">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10">
@@ -895,28 +841,23 @@ export default function InventoryPage() {
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setViewingItem(null)}
-                  className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
-                >
+                <button type="button" onClick={() => setViewingItem(null)} className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* Stats Summary */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Available Stock</span>
                     <span className="text-xl font-bold text-slate-800 mt-1 block">
-                      {totalStock} <span className="text-xs font-normal text-slate-500">{viewingItem.unit}</span>
+                      {viewingItem.stockQuantity} <span className="text-xs font-normal text-slate-500">{viewingItem.unit}</span>
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Batches Recorded</span>
                     <span className="text-xl font-bold text-slate-800 mt-1 block">
-                      {viewingItem.batches.length} <span className="text-xs font-normal text-slate-500">batch{viewingItem.batches.length !== 1 ? "es" : ""}</span>
+                      {viewingItem.totalBatches} <span className="text-xs font-normal text-slate-500">batch{viewingItem.totalBatches !== 1 ? "es" : ""}</span>
                     </span>
                   </div>
                   <div>
@@ -933,7 +874,6 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
-                {/* Description if present */}
                 {viewingItem.description && (
                   <div className="rounded-xl border border-slate-200 bg-white p-4">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Description</h4>
@@ -941,18 +881,26 @@ export default function InventoryPage() {
                   </div>
                 )}
 
-                {/* Batches Table with stock for each batch */}
+                {/* Batches — fetched on demand for this specific product */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-[#044d73] flex items-center gap-1.5">
-                      <Boxes className="w-4 h-4" /> Added Batches & Stock per Batch ({viewingItem.batches.length})
+                      <Boxes className="w-4 h-4" /> Added Batches & Stock per Batch
                     </h4>
                     <span className="text-xs text-slate-400">
                       Stock lives on batches and is updated upon purchase & sale
                     </span>
                   </div>
 
-                  {viewingItem.batches.length === 0 ? (
+                  {loadingBatches ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50/50">
+                      <p className="text-sm text-slate-400">Loading batches...</p>
+                    </div>
+                  ) : batchesError ? (
+                    <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600">
+                      {batchesError}
+                    </div>
+                  ) : viewingBatches.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50/50">
                       <Boxes className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                       <p className="text-sm font-semibold text-slate-600">No batches added yet</p>
@@ -977,24 +925,24 @@ export default function InventoryPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {viewingItem.batches.map(b => {
-                            const expStatus = getBatchExpiryStatus(b.expDate);
+                          {viewingBatches.map(b => {
+                            const expStatus = getBatchExpiryStatus(b.expiryDate);
                             return (
-                              <tr key={b.id || b.batchNo} className="hover:bg-slate-50/60 transition-colors">
+                              <tr key={b.id} className="hover:bg-slate-50/60 transition-colors">
                                 <td className="py-3 px-3">
                                   <span className="inline-flex items-center gap-1 font-bold text-slate-800 bg-[#044d73]/10 text-[#044d73] px-2 py-0.5 rounded border border-[#044d73]/20">
-                                    <Boxes className="w-3 h-3" /> {b.batchNo}
+                                    <Boxes className="w-3 h-3" /> {b.batchNumber}
                                   </span>
                                 </td>
                                 <td className="py-3 px-3 font-bold text-slate-900 text-sm">
-                                  {b.stock} <span className="text-xs font-normal text-slate-500">{viewingItem.unit}</span>
+                                  {b.quantityAvailable} <span className="text-xs font-normal text-slate-500">{viewingItem.unit}</span>
                                 </td>
-                                <td className="py-3 px-3 font-medium text-slate-700">{b.expDate || "—"}</td>
-                                <td className="py-3 px-3 text-slate-500">{b.mfgDate || "—"}</td>
-                                <td className="py-3 px-3 text-slate-600">{rs(b.purchaseRate)}</td>
-                                <td className="py-3 px-3 text-slate-600">{b.mrp ? rs(b.mrp) : "—"}</td>
-                                <td className="py-3 px-3 font-semibold text-slate-700">{b.salePrice ? rs(b.salePrice) : "—"}</td>
-                                <td className="py-3 px-3 text-slate-500">{b.supplier || "—"}</td>
+                                <td className="py-3 px-3 font-medium text-slate-700">{b.expiryDate}</td>
+                                <td className="py-3 px-3 text-slate-500">{b.manufacturingDate || "—"}</td>
+                                <td className="py-3 px-3 text-slate-600">{rs(Number(b.purchasePrice))}</td>
+                                <td className="py-3 px-3 text-slate-600">{rs(Number(b.mrp))}</td>
+                                <td className="py-3 px-3 font-semibold text-slate-700">{b.salePrice ? rs(Number(b.salePrice)) : "—"}</td>
+                                <td className="py-3 px-3 text-slate-500">{b.supplier?.name || "—"}</td>
                                 <td className="py-3 px-3">
                                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${expStatus.cls}`}>
                                     {expStatus.label}
@@ -1010,7 +958,6 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {/* Modal Footer */}
               <div className="flex items-center justify-between border-t border-slate-100 bg-white p-4 px-6">
                 <button
                   type="button"
@@ -1036,7 +983,7 @@ export default function InventoryPage() {
         );
       })()}
 
-      {/* Add / Edit Item Modal — Stock quantity field is removed; stock is tracked via batches */}
+      {/* Add / Edit Item Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
@@ -1063,24 +1010,14 @@ export default function InventoryPage() {
                   </Field>
                   <Field label="Brand / Manufacturer" hint="Pick existing, click + to add new, or use list button to manage/delete">
                     <CreatableSelect
-                      value={form.brand}
-                      options={brands}
-                      noun="brand"
-                      noneLabel="Select / None"
-                      onChange={v => setField("brand", v)}
-                      onCreate={addBrand}
-                      onDelete={deleteBrand}
+                      value={form.brand} options={brands} noun="brand" noneLabel="Select / None"
+                      onChange={v => setField("brand", v)} onCreate={addBrand} onDelete={deleteBrand}
                     />
                   </Field>
                   <Field label="Category" hint="Pick existing, click + to add new, or use list button to manage/delete">
                     <CreatableSelect
-                      value={form.category}
-                      options={categories.map(c => c.name)}
-                      noun="category"
-                      noneLabel="Select / None"
-                      onChange={v => setField("category", v)}
-                      onCreate={addCategory}
-                      onDelete={deleteCategory}
+                      value={form.category} options={categories.map(c => c.name)} noun="category" noneLabel="Select / None"
+                      onChange={v => setField("category", v)} onCreate={addCategory} onDelete={deleteCategory}
                     />
                   </Field>
                   <Field label="Alias Name">
@@ -1092,16 +1029,13 @@ export default function InventoryPage() {
                   <Field label="Unit">
                     <CreatableSelect
                       value={form.unit} options={units} noun="unit"
-                      onChange={v => setField("unit", v)} onCreate={addUnit}
-                      onDelete={deleteUnit}
+                      onChange={v => setField("unit", v)} onCreate={addUnit} onDelete={deleteUnit}
                     />
                   </Field>
                   <Field label="Alternative Unit">
                     <CreatableSelect
-                      value={form.altUnit} options={units.filter(u => u !== form.unit)} noun="unit"
-                      noneLabel="None"
-                      onChange={v => setField("altUnit", v)} onCreate={addUnit}
-                      onDelete={deleteUnit}
+                      value={form.altUnit} options={units.filter(u => u !== form.unit)} noun="unit" noneLabel="None"
+                      onChange={v => setField("altUnit", v)} onCreate={addUnit} onDelete={deleteUnit}
                     />
                   </Field>
                   <Field label="Low Stock Threshold" hint="Item is flagged “Low Stock” at or below this quantity" span>
@@ -1109,8 +1043,7 @@ export default function InventoryPage() {
                   </Field>
                   <Field label="Item Description" span>
                     <textarea
-                      rows={3}
-                      value={form.description}
+                      rows={3} value={form.description}
                       onChange={e => setField("description", e.target.value)}
                       className={inputCls}
                       placeholder="Brief clinical description or dosage information"

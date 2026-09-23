@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, Fragment } from "react";
 import {
-  Plus, X, Pencil, Trash2, Search, ChevronDown,
+  Plus, X, Pencil, Trash2, Search, ChevronDown, ChevronLeft, ChevronRight,
   Receipt, Wallet, CreditCard, Banknote, PackagePlus, Percent, Boxes, Check,
   AlertCircle,
 } from "lucide-react";
@@ -420,7 +420,7 @@ export default function PurchasePage() {
     return matchSearch && matchType;
   }).sort((a, b) => b.date.localeCompare(a.date)), [purchases, search, typeFilter]);
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   /* ---- purchase modal ---- */
@@ -720,29 +720,36 @@ export default function PurchasePage() {
           </table>
         </div>
 
+        {/* Footer Pagination Controls */}
         {filtered.length > 0 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
+          <div className="flex flex-col gap-4 items-center justify-between border-t border-slate-100 bg-white px-6 py-4 sm:flex-row">
             <span className="text-xs text-slate-400">
               Showing {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, filtered.length)}–{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} of {filtered.length} purchase{filtered.length !== 1 ? "s" : ""}
             </span>
-            {totalPages > 1 && (
-              <div className="flex items-center gap-1">
-                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-30">
-                  <ChevronDown className="w-4 h-4 rotate-90" />
+
+            <div className="flex items-center justify-between w-full sm:w-auto gap-6">
+              <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                Page {currentPage} of {totalPages}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors touch-manipulation"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="h-5 w-5" />
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(pg => (
-                  <button key={pg} onClick={() => setCurrentPage(pg)}
-                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold ${currentPage === pg ? "bg-[#044d73] text-white" : "border border-slate-200 text-slate-500"}`}>
-                    {pg}
-                  </button>
-                ))}
-                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-30">
-                  <ChevronDown className="w-4 h-4 -rotate-90" />
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors touch-manipulation"
+                  title="Next Page"
+                >
+                  <ChevronRight className="h-5 w-5" />
                 </button>
               </div>
-            )}
+            </div>
           </div>
         )}
       </div>

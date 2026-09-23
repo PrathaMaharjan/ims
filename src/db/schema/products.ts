@@ -20,6 +20,7 @@ export const products = pgTable("products", {
   hsnCode: varchar("hsn_code", { length: 20 }), 
   unit: varchar("unit", { length: 30 }).notNull().default("Pcs"), 
   alternativeUnit: varchar("alternative_unit", { length: 30 }), 
+   stockQuantity: integer("stock_quantity").notNull().default(0),
   lowStockThreshold: integer("low_stock_threshold"), 
   isActive: boolean("is_active").notNull().default(true),
   description: text("description"), 

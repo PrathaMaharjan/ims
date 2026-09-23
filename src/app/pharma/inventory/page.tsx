@@ -563,7 +563,7 @@ export default function InventoryPage() {
       <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Inventory</h1>
-          <p className="text-xs text-white/70 mt-0.5">Medicine catalog, brand names, categories, batch stock levels, and expiry tracking</p>
+
         </div>
         <button
           onClick={openAdd}

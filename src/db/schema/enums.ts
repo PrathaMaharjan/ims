@@ -35,3 +35,11 @@ export const paymentStatusEnum = pgEnum("payment_status", [
   "PARTIAL",
   "PAID",
 ]);
+
+export const purchasePaymentTypeEnum = pgEnum("purchase_payment_type", [
+  "CASH",
+  "CREDIT",
+  "BANK_TRANSFER",
+  "CHEQUE",
+  "MOBILE_PAYMENT",
+]);

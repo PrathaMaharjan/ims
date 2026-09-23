@@ -679,7 +679,7 @@ export default function PurchasePage() {
       <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Purchase</h1>
-          <p className="text-xs text-white/70 mt-0.5">Manage purchase vouchers, item batches, and suppliers</p>
+
         </div>
         <button
           onClick={openAdd}

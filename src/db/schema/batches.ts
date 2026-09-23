@@ -25,8 +25,9 @@ export const batches = pgTable("batches", {
   expiryDate: date("expiry_date").notNull(),
   purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }).notNull(),
   mrp: numeric("mrp", { precision: 12, scale: 2 }).notNull(),
+  salePrice: numeric("sale_price", { precision: 12, scale: 2 }),
   quantityReceived: integer("quantity_received").notNull(),
-  quantityAvailable: integer("quantity_available").notNull(), // decremented on sale/return-out
+  quantityAvailable: integer("quantity_available").notNull(), 
   status: batchStatusEnum("status").notNull().default("ACTIVE"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

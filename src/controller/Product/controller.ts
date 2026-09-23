@@ -15,6 +15,11 @@ function oneCacheKey(organizationId: string, id: string) {
   return `products:one:${organizationId}:${id}`;
 }
 
+
+
+// List all products for an organization, with caching and sorted by name. Returns an array of products with the above columns.
+
+
 const productColumns = {
   id: true,
   name: true,
@@ -25,21 +30,56 @@ const productColumns = {
   unit: true,
   alternativeUnit: true,
   lowStockThreshold: true,
+  stockQuantity: true,
   isActive: true,
   description: true,
   createdAt: true,
   updatedAt: true,
 } as const;
 
-// List all products for an organization, with caching and sorted by name. Returns an array of products with the above columns.
-export async function listProducts(organizationId: string) {
-  const cached = await getCached(listCacheKey(organizationId));
+export interface ProductWithBatchSummary {
+  id: string;
+  name: string;
+  aliasName: string | null;
+  manufacturer: string | null;
+  categoryId: string | null;
+  hsnCode: string | null;
+  unit: string;
+  alternativeUnit: string | null;
+  lowStockThreshold: number | null;
+  stockQuantity: number;
+  isActive: boolean;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  totalBatches: number;
+  totalStock: number; // sum of quantityAvailable across active batches — cross-check against stockQuantity
+}
+
+export async function listProducts(organizationId: string): Promise<ProductWithBatchSummary[]> {
+  const cached = await getCached<ProductWithBatchSummary[]>(listCacheKey(organizationId));
   if (cached) return cached;
 
-  const result = await db.query.products.findMany({
+  // One relational query — products with their batches nested, no N+1.
+  const rows = await db.query.products.findMany({
     where: eq(products.organizationId, organizationId),
     columns: productColumns,
+    with: {
+      batches: {
+        columns: { quantityAvailable: true, status: true },
+      },
+    },
     orderBy: (table, { asc }) => [asc(table.name)],
+  });
+
+  const result: ProductWithBatchSummary[] = rows.map((product) => {
+    const activeBatches = product.batches.filter((b) => b.status === "ACTIVE");
+    return {
+      ...product,
+      batches: undefined, // strip the raw nested array from the response — only the summary is needed
+      totalBatches: activeBatches.length,
+      totalStock: activeBatches.reduce((sum, b) => sum + b.quantityAvailable, 0),
+    } as ProductWithBatchSummary;
   });
 
   await setCached(listCacheKey(organizationId), result, 60 * 5);
@@ -115,14 +155,12 @@ export async function updateProductField(
   organizationId: string,
   id: string,
   field: string,
-  value: string | number | boolean | null,
+  value: string | number | boolean | null
 ) {
   const [updated] = await db
     .update(products)
     .set({ [field]: value, updatedAt: new Date() })
-    .where(
-      and(eq(products.id, id), eq(products.organizationId, organizationId)),
-    )
+    .where(and(eq(products.id, id), eq(products.organizationId, organizationId)))
     .returning();
 
   if (!updated) {
@@ -134,7 +172,7 @@ export async function updateProductField(
     invalidateCache(oneCacheKey(organizationId, id)),
   ]);
 
-  return updated;
+  return getProductById(organizationId, id); // same fix
 }
 
 export async function deleteProduct(organizationId: string, id: string) {

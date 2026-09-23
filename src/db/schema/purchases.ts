@@ -5,7 +5,7 @@ import { suppliers } from "./suppliers";
 import { products } from "./products";
 import { batches } from "./batches";
 import { users } from "./users";
-import { paymentStatusEnum, purcTypeEnum } from "./enums";
+import { paymentStatusEnum, purchasePaymentTypeEnum, purcTypeEnum } from "./enums";
 
 export const purchases = pgTable("purchases", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -18,6 +18,7 @@ export const purchases = pgTable("purchases", {
   supplierInvoiceNumber: varchar("supplier_invoice_number", { length: 100 }),
   purchaseDate: date("purchase_date").notNull(),
   purcType: purcTypeEnum("purc_type").notNull().default("VAT_ITEM_WISE"),
+  paymentType: purchasePaymentTypeEnum("payment_type").notNull().default("CASH"),
 
   subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
   discount: numeric("discount", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -26,7 +27,7 @@ export const purchases = pgTable("purchases", {
     .default("0"),
   vatAmount: numeric("vat_amount", { precision: 12, scale: 2 }).notNull().default("0"),
   vatRefund: numeric("vat_refund", { precision: 12, scale: 2 }).notNull().default("0"),
-  roundedOff: numeric("rounded_off", { precision: 12, scale: 2 }).notNull().default("0"),
+  // roundedOff: numeric("rounded_off", { precision: 12, scale: 2 }).notNull().default("0"),
   grandTotal: numeric("grand_total", { precision: 12, scale: 2 }).notNull(),
 
  paymentStatus: paymentStatusEnum("payment_status").notNull().default("UNPAID"),
@@ -48,6 +49,7 @@ export const purchaseItems = pgTable("purchase_items", {
     onDelete: "set null",
   }), // filled in once the batch row is created from this line
   batchNumber: varchar("batch_number", { length: 100 }).notNull(),
+
   manufacturingDate: date("manufacturing_date"),
   expiryDate: date("expiry_date").notNull(),
   quantity: integer("quantity").notNull(),

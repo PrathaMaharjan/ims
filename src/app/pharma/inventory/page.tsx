@@ -6,6 +6,7 @@ import {
   Package, PackageCheck, PackageX, AlertTriangle,
   ChevronDown, Check, Boxes, ListFilter,
 } from "lucide-react";
+import { api } from "@/lib/api-client";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -54,6 +55,27 @@ export interface Item {
   batches: ItemBatch[];
 }
 
+interface Category {
+  id: string;
+  name: string;
+}
+
+// Matches what GET /api/product actually returns — batches/stock are not
+// part of the product record, so they're left out here (tracked separately).
+interface ApiProduct {
+  id: string;
+  name: string;
+  aliasName: string | null;
+  manufacturer: string | null;
+  categoryId: string | null;
+  hsnCode: string | null;
+  unit: string;
+  alternativeUnit: string | null;
+  lowStockThreshold: number | null;
+  isActive: boolean;
+  description: string | null;
+}
+
 /* ------------------------------------------------------------------ */
 /* Defaults & seed data                                                */
 /* ------------------------------------------------------------------ */
@@ -72,19 +94,6 @@ const DEFAULT_BRANDS = [
   "Generic",
 ];
 
-const DEFAULT_CATEGORIES = [
-  "Antibiotics",
-  "Analgesics / Pain Relief",
-  "Antipyretics",
-  "Antacids & Gastro",
-  "Cardiovascular",
-  "Antidiabetic",
-  "Respiratory & Cough",
-  "Vitamins & Supplements",
-  "Surgical & Wound Care",
-  "Dermatology",
-];
-
 const EMPTY_FORM: ItemForm = {
   name: "",
   brand: "",
@@ -97,117 +106,31 @@ const EMPTY_FORM: ItemForm = {
   minStockLevel: "",
 };
 
-const SEED_ITEMS: Item[] = [
-  {
-    id: "1",
-    name: "Cefixime 200 MG",
-    brand: "Cipla",
-    category: "Antibiotics",
-    alias: "Cefixime",
-    hsnCode: "3004",
-    description: "Antibiotic tablet, third-generation cephalosporin.",
-    unit: "Tab",
-    altUnit: "Strip",
-    minStockLevel: 100,
-    batches: [
-      {
-        id: "b1",
-        batchNo: "AB2511015",
-        stock: 300,
-        unit: "Tab",
-        mfgDate: "2026-07",
-        expDate: "2027-10",
-        purchaseRate: 8,
-        mrp: 12,
-        salePrice: 10,
-        supplier: "MedSupply Pvt. Ltd.",
-      },
-      {
-        id: "b2",
-        batchNo: "AB2511020",
-        stock: 200,
-        unit: "Tab",
-        mfgDate: "2026-08",
-        expDate: "2027-12",
-        purchaseRate: 8.5,
-        mrp: 12.5,
-        salePrice: 10.5,
-        supplier: "Global Pharma",
-      },
-    ],
-  },
-  {
-    id: "2",
-    name: "Absorbant Cotton Wool",
-    brand: "Generic",
-    category: "Surgical & Wound Care",
-    alias: "Cotton Wool",
-    hsnCode: "5601",
-    description: "Sterile absorbent cotton for wound dressing.",
-    unit: "Pcs",
-    altUnit: "",
-    minStockLevel: 20,
-    batches: [
-      {
-        id: "b3",
-        batchNo: "CW-901",
-        stock: 45,
-        unit: "Pcs",
-        mfgDate: "2026-01",
-        expDate: "2028-05",
-        purchaseRate: 5,
-        mrp: 8,
-        salePrice: 7,
-        supplier: "City Pharma Distributors",
-      },
-    ],
-  },
-  {
-    id: "3",
-    name: "Pregabalin 75 MG",
-    brand: "Sun Pharma",
-    category: "Analgesics / Pain Relief",
-    alias: "Pregabalin",
-    hsnCode: "3004",
-    description: "Used for nerve pain and seizures.",
-    unit: "Tab",
-    altUnit: "Strip",
-    minStockLevel: 500,
-    batches: [
-      {
-        id: "b4",
-        batchNo: "PG75-01",
-        stock: 2000,
-        unit: "Tab",
-        mfgDate: "2026-03",
-        expDate: "2027-08",
-        purchaseRate: 1.5,
-        mrp: 3,
-        salePrice: 2.5,
-        supplier: "Apex Healthcare",
-      },
-      {
-        id: "b5",
-        batchNo: "PG75-02",
-        stock: 1200,
-        unit: "Tab",
-        mfgDate: "2026-06",
-        expDate: "2028-02",
-        purchaseRate: 1.6,
-        mrp: 3,
-        salePrice: 2.5,
-        supplier: "Apex Healthcare",
-      },
-    ],
-  },
-];
-
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
 const n = (v: Num) => (v === "" ? 0 : v);
 const rs = (v: number) => `Rs. ${v.toFixed(2)}`;
+
+// Maps an API product record onto the local Item shape. Batches aren't part
+// of the product API yet, so they're carried over from local state as-is
+// (empty for a freshly loaded product) instead of being fetched.
+function toItem(p: ApiProduct, categoryNameById: Map<string, string>, batches: ItemBatch[] = []): Item {
+  return {
+    id: p.id,
+    name: p.name,
+    brand: p.manufacturer ?? "",
+    category: p.categoryId ? categoryNameById.get(p.categoryId) ?? "" : "",
+    alias: p.aliasName ?? "",
+    hsnCode: p.hsnCode ?? "",
+    description: p.description ?? "",
+    unit: p.unit,
+    altUnit: p.alternativeUnit ?? "",
+    minStockLevel: p.lowStockThreshold ?? 0,
+    batches,
+  };
+}
 
 /** Calculates total stock of an item across all its active batches */
 function getItemTotalStock(item: Item): number {
@@ -289,8 +212,8 @@ function CreatableSelect({
   value: string;
   options: string[];
   onChange: (v: string) => void;
-  onCreate: (raw: string) => string | null;
-  onDelete?: (option: string) => void;
+  onCreate: (raw: string) => string | null | Promise<string | null>;
+  onDelete?: (option: string) => void | Promise<void>;
   noun: string;
   noneLabel?: string;
 }) {
@@ -313,8 +236,8 @@ function CreatableSelect({
   }, [managing]);
 
   function cancel() { setDraft(""); setAdding(false); }
-  function commit() {
-    const created = onCreate(draft);
+  async function commit() {
+    const created = await onCreate(draft);
     if (created) onChange(created);
     cancel();
   }
@@ -452,10 +375,39 @@ function CreatableSelect({
 /* ------------------------------------------------------------------ */
 
 export default function InventoryPage() {
-  const [items, setItems] = useState<Item[]>(SEED_ITEMS);
+  const [items, setItems] = useState<Item[]>([]);
   const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
   const [brands, setBrands] = useState<string[]>(DEFAULT_BRANDS);
-  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  // Real data from the API — products and categories only; batches/stock
+  // stay local for now since there's no batches endpoint wired up yet.
+  const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadCatalog() {
+      setLoadingCatalog(true);
+      setCatalogError(null);
+      try {
+        const [productsRes, categoriesRes] = await Promise.all([
+          api.get("/api/product"),
+          api.get("/api/product/categories"),
+        ]);
+        const cats: Category[] = categoriesRes.data.categories;
+        const categoryNameById = new Map(cats.map(c => [c.id, c.name]));
+        const apiProducts: ApiProduct[] = productsRes.data.products;
+        setCategories(cats);
+        setItems(apiProducts.map(p => toItem(p, categoryNameById)));
+      } catch {
+        setCatalogError("Failed to load products/categories.");
+      } finally {
+        setLoadingCatalog(false);
+      }
+    }
+
+    loadCatalog();
+  }, []);
 
   const [search, setSearch] = useState("");
   const [stockFilter, setStockFilter] = useState<"ALL" | StockLevel>("ALL");
@@ -525,17 +477,30 @@ export default function InventoryPage() {
     if (form.brand === brandToDelete) setForm(p => ({ ...p, brand: "" }));
   }
 
-  function addCategory(raw: string): string | null {
+  async function addCategory(raw: string): Promise<string | null> {
     const name = raw.trim();
     if (!name) return null;
-    const existing = categories.find(o => o.toLowerCase() === name.toLowerCase());
-    if (existing) return existing;
-    setCategories(prev => [...prev, name]);
-    return name;
+    const existing = categories.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing.name;
+    try {
+      const res = await api.post("/api/product/categories", { name });
+      const created: Category = res.data.category;
+      setCategories(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      return created.name;
+    } catch {
+      return null;
+    }
   }
 
-  function deleteCategory(categoryToDelete: string) {
-    setCategories(prev => prev.filter(c => c !== categoryToDelete));
+  async function deleteCategory(categoryToDelete: string) {
+    const category = categories.find(c => c.name === categoryToDelete);
+    if (!category) return;
+    try {
+      await api.delete(`/api/product/categories/${category.id}`);
+    } catch {
+      return;
+    }
+    setCategories(prev => prev.filter(c => c.id !== category.id));
     if (form.category === categoryToDelete) setForm(p => ({ ...p, category: "" }));
     if (categoryFilter === categoryToDelete) setCategoryFilter("ALL");
   }
@@ -549,6 +514,7 @@ export default function InventoryPage() {
   function openAdd() {
     setEditingItem(null);
     setForm(EMPTY_FORM);
+    setSaveError(null);
     setIsModalOpen(true);
   }
 
@@ -565,6 +531,7 @@ export default function InventoryPage() {
       altUnit: item.altUnit,
       minStockLevel: item.minStockLevel,
     });
+    setSaveError(null);
     setIsModalOpen(true);
   }
 
@@ -574,37 +541,62 @@ export default function InventoryPage() {
     setForm(EMPTY_FORM);
   }
 
-  function handleSave(e: React.FormEvent) {
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) return;
 
     const altUnit = form.altUnit === form.unit ? "" : form.altUnit;
+    const matchedCategory = categories.find(
+      c => c.name.toLowerCase() === form.category.trim().toLowerCase()
+    );
+    const categoryNameById = new Map(categories.map(c => [c.id, c.name]));
 
-    const clean: Item = {
-      id: editingItem ? editingItem.id : crypto.randomUUID(),
+    const payload = {
       name: form.name.trim(),
-      brand: form.brand.trim(),
-      category: form.category.trim(),
-      alias: form.alias.trim(),
-      hsnCode: form.hsnCode.trim(),
-      description: form.description.trim(),
-      unit: form.unit,
-      altUnit,
-      minStockLevel: n(form.minStockLevel),
-      batches: editingItem ? editingItem.batches : [],
+      aliasName: form.alias.trim() || undefined,
+      manufacturer: form.brand.trim() || undefined,
+      categoryId: matchedCategory?.id,
+      hsnCode: form.hsnCode.trim() || undefined,
+      unit: form.unit || undefined,
+      alternativeUnit: altUnit || undefined,
+      lowStockThreshold: n(form.minStockLevel),
+      description: form.description.trim() || undefined,
     };
 
-    if (editingItem) {
-      setItems(prev => prev.map(i => (i.id === editingItem.id ? clean : i)));
-    } else {
-      setItems(prev => [...prev, clean]);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (editingItem) {
+        const res = await api.patch(`/api/product/${editingItem.id}`, payload);
+        const updated: ApiProduct = res.data.product;
+        setItems(prev => prev.map(i => (
+          i.id === editingItem.id ? toItem(updated, categoryNameById, editingItem.batches) : i
+        )));
+      } else {
+        const res = await api.post("/api/product", payload);
+        const created: ApiProduct = res.data.product;
+        setItems(prev => [...prev, toItem(created, categoryNameById)]);
+      }
+      closeModal();
+    } catch {
+      setSaveError("Failed to save item. Please try again.");
+    } finally {
+      setSaving(false);
     }
-    closeModal();
   }
 
-  function handleDelete(id: string) {
-    setItems(prev => prev.filter(i => i.id !== id));
-    setDeleteConfirmId(null);
+  async function handleDelete(id: string) {
+    try {
+      await api.delete(`/api/product/${id}`);
+      setItems(prev => prev.filter(i => i.id !== id));
+    } catch {
+      setCatalogError("Failed to delete item. Please try again.");
+    } finally {
+      setDeleteConfirmId(null);
+    }
   }
 
   return (
@@ -617,12 +609,19 @@ export default function InventoryPage() {
         </div>
         <button
           onClick={openAdd}
-          className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors"
+          disabled={loadingCatalog}
+          className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
         >
           <Plus className="h-4 w-4" strokeWidth={2.5} />
           Add Item
         </button>
       </div>
+
+      {catalogError && (
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600 font-medium">
+          {catalogError}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -663,7 +662,7 @@ export default function InventoryPage() {
         >
           <option value="ALL">All Categories</option>
           {categories.map(c => (
-            <option key={c} value={c}>{c}</option>
+            <option key={c.id} value={c.name}>{c.name}</option>
           ))}
         </select>
         <select
@@ -1069,7 +1068,7 @@ export default function InventoryPage() {
                   <Field label="Category" hint="Pick existing, click + to add new, or use list button to manage/delete">
                     <CreatableSelect
                       value={form.category}
-                      options={categories}
+                      options={categories.map(c => c.name)}
                       noun="category"
                       noneLabel="Select / None"
                       onChange={v => setField("category", v)}
@@ -1113,12 +1112,18 @@ export default function InventoryPage() {
                 </div>
               </div>
 
+              {saveError && (
+                <div className="mx-8 mb-4 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-xs text-red-600 font-medium">
+                  {saveError}
+                </div>
+              )}
+
               <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-white p-5 px-8">
                 <button type="button" onClick={closeModal}
                   className="flex-1 rounded-lg border border-slate-200 bg-slate-50 py-3 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
-                <button type="submit"
-                  className="flex-1 rounded-lg bg-[#044d73] hover:bg-[#033f60] py-3 text-sm font-medium text-white shadow-sm transition-colors">
-                  {editingItem ? "Save Changes" : "Save Item"}
+                <button type="submit" disabled={saving}
+                  className="flex-1 rounded-lg bg-[#044d73] hover:bg-[#033f60] py-3 text-sm font-medium text-white shadow-sm transition-colors disabled:opacity-50">
+                  {saving ? "Saving..." : editingItem ? "Save Changes" : "Save Item"}
                 </button>
               </div>
             </form>

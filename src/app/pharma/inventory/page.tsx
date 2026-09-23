@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Plus, X, Pencil, Trash2, Search,
   Package, PackageCheck, PackageX, AlertTriangle,
-  ChevronDown, Check, Boxes,
+  ChevronDown, Check, Boxes, ListFilter,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -30,6 +30,8 @@ export interface ItemBatch {
 /** Everything the user can edit in the Add / Edit Item form (stock is managed via batches, not manually entered here). */
 interface ItemForm {
   name: string;
+  brand: string;
+  category: string;
   alias: string;
   hsnCode: string;
   description: string;
@@ -41,6 +43,8 @@ interface ItemForm {
 export interface Item {
   id: string;
   name: string;
+  brand?: string;
+  category?: string;
   alias: string;
   hsnCode: string;
   description: string;
@@ -56,8 +60,35 @@ export interface Item {
 
 const DEFAULT_UNITS = ["Pcs", "Tab", "Strip", "Box", "Bottle", "Vial", "Kg", "L", "ml"];
 
+const DEFAULT_BRANDS = [
+  "Cipla",
+  "Sun Pharma",
+  "Torrent Pharma",
+  "Alkem",
+  "Abbott",
+  "Deurali-Janta",
+  "Nepal Pharmaceuticals",
+  "Apex Healthcare",
+  "Generic",
+];
+
+const DEFAULT_CATEGORIES = [
+  "Antibiotics",
+  "Analgesics / Pain Relief",
+  "Antipyretics",
+  "Antacids & Gastro",
+  "Cardiovascular",
+  "Antidiabetic",
+  "Respiratory & Cough",
+  "Vitamins & Supplements",
+  "Surgical & Wound Care",
+  "Dermatology",
+];
+
 const EMPTY_FORM: ItemForm = {
   name: "",
+  brand: "",
+  category: "",
   alias: "",
   hsnCode: "",
   description: "",
@@ -70,6 +101,8 @@ const SEED_ITEMS: Item[] = [
   {
     id: "1",
     name: "Cefixime 200 MG",
+    brand: "Cipla",
+    category: "Antibiotics",
     alias: "Cefixime",
     hsnCode: "3004",
     description: "Antibiotic tablet, third-generation cephalosporin.",
@@ -106,6 +139,8 @@ const SEED_ITEMS: Item[] = [
   {
     id: "2",
     name: "Absorbant Cotton Wool",
+    brand: "Generic",
+    category: "Surgical & Wound Care",
     alias: "Cotton Wool",
     hsnCode: "5601",
     description: "Sterile absorbent cotton for wound dressing.",
@@ -130,6 +165,8 @@ const SEED_ITEMS: Item[] = [
   {
     id: "3",
     name: "Pregabalin 75 MG",
+    brand: "Sun Pharma",
+    category: "Analgesics / Pain Relief",
     alias: "Pregabalin",
     hsnCode: "3004",
     description: "Used for nerve pain and seizures.",
@@ -237,18 +274,43 @@ function NumInput({ value, onChange, step = "1", placeholder }: {
 }
 
 /**
- * A select with an inline "+" button to add a new unit option on the spot.
+ * A select with an inline "+" button to add a new option,
+ * plus a quick delete button for selected option and a list management popover.
  */
-function CreatableSelect({ value, options, onChange, onCreate, noun, noneLabel }: {
+function CreatableSelect({
+  value,
+  options,
+  onChange,
+  onCreate,
+  onDelete,
+  noun,
+  noneLabel,
+}: {
   value: string;
   options: string[];
   onChange: (v: string) => void;
   onCreate: (raw: string) => string | null;
+  onDelete?: (option: string) => void;
   noun: string;
   noneLabel?: string;
 }) {
   const [adding, setAdding] = useState(false);
+  const [managing, setManaging] = useState(false);
   const [draft, setDraft] = useState("");
+  const [manageSearch, setManageSearch] = useState("");
+  const manageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (manageRef.current && !manageRef.current.contains(event.target as Node)) {
+        setManaging(false);
+      }
+    }
+    if (managing) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [managing]);
 
   function cancel() { setDraft(""); setAdding(false); }
   function commit() {
@@ -272,27 +334,115 @@ function CreatableSelect({ value, options, onChange, onCreate, noun, noneLabel }
           className={inputCls}
         />
         <button type="button" onClick={commit} title={`Add ${noun}`}
-          className="shrink-0 rounded-lg bg-[#044d73] px-3.5 text-white hover:bg-[#033f60]">
+          className="shrink-0 rounded-lg bg-[#044d73] px-3.5 text-white hover:bg-[#033f60] transition-colors">
           <Check className="h-4 w-4" />
         </button>
         <button type="button" onClick={cancel} title="Cancel"
-          className="shrink-0 rounded-lg border border-slate-200 px-3.5 text-slate-500 hover:bg-slate-50">
+          className="shrink-0 rounded-lg border border-slate-200 px-3.5 text-slate-500 hover:bg-slate-50 transition-colors">
           <X className="h-4 w-4" />
         </button>
       </div>
     );
   }
 
+  const filteredManageOptions = options.filter(o =>
+    o.toLowerCase().includes(manageSearch.toLowerCase())
+  );
+
   return (
-    <div className="flex gap-2">
-      <select value={value} onChange={e => onChange(e.target.value)} className={inputCls}>
+    <div className="relative flex gap-2">
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className={inputCls}
+      >
         {noneLabel !== undefined && <option value="">{noneLabel}</option>}
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
-      <button type="button" onClick={() => setAdding(true)} title={`Add new ${noun}`}
-        className="shrink-0 rounded-lg border border-slate-200 px-3.5 text-[#044d73] hover:bg-[#044d73]/10">
+
+      {/* Quick Add Button */}
+      <button
+        type="button"
+        onClick={() => { setAdding(true); setManaging(false); }}
+        title={`Add new ${noun}`}
+        className="shrink-0 rounded-lg border border-slate-200 px-3 text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
+      >
         <Plus className="h-4 w-4" />
       </button>
+
+      {/* Manage List Popover Button (user can delete from here) */}
+      {onDelete && options.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setManaging(p => !p)}
+          title={`Manage / Delete ${noun}s`}
+          className={`shrink-0 rounded-lg border px-2.5 transition-colors ${
+            managing
+              ? "border-[#044d73] bg-[#044d73] text-white"
+              : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <ListFilter className="h-4 w-4" />
+        </button>
+      )}
+
+      {/* Manage Popover Dropdown */}
+      {managing && onDelete && (
+        <div
+          ref={manageRef}
+          className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl animate-in fade-in-50 zoom-in-95 duration-100"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#044d73]">
+              Manage {noun}s ({options.length})
+            </span>
+            <button
+              type="button"
+              onClick={() => setManaging(false)}
+              className="p-0.5 text-slate-400 hover:text-slate-600 rounded"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {options.length > 5 && (
+            <div className="mb-2">
+              <input
+                type="text"
+                value={manageSearch}
+                onChange={e => setManageSearch(e.target.value)}
+                placeholder={`Filter ${noun}s...`}
+                className="h-7 w-full rounded border border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#044d73]"
+              />
+            </div>
+          )}
+
+          <div className="max-h-48 overflow-y-auto space-y-1">
+            {filteredManageOptions.length === 0 ? (
+              <p className="p-2 text-center text-xs text-slate-400">No {noun}s found</p>
+            ) : (
+              filteredManageOptions.map(opt => (
+                <div
+                  key={opt}
+                  className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs hover:bg-slate-50 transition-colors"
+                >
+                  <span className={`truncate font-medium ${value === opt ? "text-[#044d73] font-semibold" : "text-slate-700"}`}>
+                    {opt}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(opt)}
+                    title={`Delete "${opt}"`}
+                    className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -304,9 +454,12 @@ function CreatableSelect({ value, options, onChange, onCreate, noun, noneLabel }
 export default function InventoryPage() {
   const [items, setItems] = useState<Item[]>(SEED_ITEMS);
   const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
+  const [brands, setBrands] = useState<string[]>(DEFAULT_BRANDS);
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
 
   const [search, setSearch] = useState("");
   const [stockFilter, setStockFilter] = useState<"ALL" | StockLevel>("ALL");
+  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 8;
 
@@ -328,17 +481,20 @@ export default function InventoryPage() {
     const q = search.toLowerCase();
     const matchSearch =
       i.name.toLowerCase().includes(q) ||
+      (i.brand && i.brand.toLowerCase().includes(q)) ||
+      (i.category && i.category.toLowerCase().includes(q)) ||
       i.alias.toLowerCase().includes(q) ||
       i.hsnCode.toLowerCase().includes(q) ||
       i.batches.some(b => b.batchNo.toLowerCase().includes(q));
     const matchStock = stockFilter === "ALL" || getStockLevel(i) === stockFilter;
-    return matchSearch && matchStock;
-  }), [items, search, stockFilter]);
+    const matchCategory = categoryFilter === "ALL" || i.category === categoryFilter;
+    return matchSearch && matchStock && matchCategory;
+  }), [items, search, stockFilter, categoryFilter]);
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  /* ---- unit list ---- */
+  /* ---- creatable list helpers ---- */
 
   function addUnit(raw: string): string | null {
     const name = raw.trim();
@@ -347,6 +503,41 @@ export default function InventoryPage() {
     if (existing) return existing;
     setUnits(prev => [...prev, name]);
     return name;
+  }
+
+  function deleteUnit(unitToDelete: string) {
+    setUnits(prev => prev.filter(u => u !== unitToDelete));
+    if (form.unit === unitToDelete) setForm(p => ({ ...p, unit: "" }));
+    if (form.altUnit === unitToDelete) setForm(p => ({ ...p, altUnit: "" }));
+  }
+
+  function addBrand(raw: string): string | null {
+    const name = raw.trim();
+    if (!name) return null;
+    const existing = brands.find(o => o.toLowerCase() === name.toLowerCase());
+    if (existing) return existing;
+    setBrands(prev => [...prev, name]);
+    return name;
+  }
+
+  function deleteBrand(brandToDelete: string) {
+    setBrands(prev => prev.filter(b => b !== brandToDelete));
+    if (form.brand === brandToDelete) setForm(p => ({ ...p, brand: "" }));
+  }
+
+  function addCategory(raw: string): string | null {
+    const name = raw.trim();
+    if (!name) return null;
+    const existing = categories.find(o => o.toLowerCase() === name.toLowerCase());
+    if (existing) return existing;
+    setCategories(prev => [...prev, name]);
+    return name;
+  }
+
+  function deleteCategory(categoryToDelete: string) {
+    setCategories(prev => prev.filter(c => c !== categoryToDelete));
+    if (form.category === categoryToDelete) setForm(p => ({ ...p, category: "" }));
+    if (categoryFilter === categoryToDelete) setCategoryFilter("ALL");
   }
 
   /* ---- item modal ---- */
@@ -365,6 +556,8 @@ export default function InventoryPage() {
     setEditingItem(item);
     setForm({
       name: item.name,
+      brand: item.brand || "",
+      category: item.category || "",
       alias: item.alias,
       hsnCode: item.hsnCode,
       description: item.description,
@@ -390,6 +583,8 @@ export default function InventoryPage() {
     const clean: Item = {
       id: editingItem ? editingItem.id : crypto.randomUUID(),
       name: form.name.trim(),
+      brand: form.brand.trim(),
+      category: form.category.trim(),
       alias: form.alias.trim(),
       hsnCode: form.hsnCode.trim(),
       description: form.description.trim(),
@@ -418,7 +613,7 @@ export default function InventoryPage() {
       <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Inventory</h1>
-          <p className="text-xs text-white/70 mt-0.5">Medicine catalog, batch stock levels, and expiry tracking</p>
+          <p className="text-xs text-white/70 mt-0.5">Medicine catalog, brand names, categories, batch stock levels, and expiry tracking</p>
         </div>
         <button
           onClick={openAdd}
@@ -455,12 +650,22 @@ export default function InventoryPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by name, alias, HSN or batch"
+            placeholder="Search by name, brand, category, HSN, batch"
             value={search}
             onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
             className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
           />
         </div>
+        <select
+          value={categoryFilter}
+          onChange={e => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
+        >
+          <option value="ALL">All Categories</option>
+          {categories.map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
         <select
           value={stockFilter}
           onChange={e => { setStockFilter(e.target.value as typeof stockFilter); setCurrentPage(1); }}
@@ -479,7 +684,8 @@ export default function InventoryPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <th className="py-3 px-4">Item</th>
+                <th className="py-3 px-4">Item & Brand</th>
+                <th className="py-3 px-4">Category</th>
                 <th className="py-3 px-4">HSN Code</th>
                 <th className="py-3 px-4">Unit</th>
                 <th className="py-3 px-4">Total Stock</th>
@@ -492,7 +698,7 @@ export default function InventoryPage() {
             <tbody className="divide-y divide-slate-100">
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-sm text-slate-400">
+                  <td colSpan={9} className="py-16 text-center text-sm text-slate-400">
                     No items match criteria.
                   </td>
                 </tr>
@@ -507,10 +713,28 @@ export default function InventoryPage() {
                     className="hover:bg-slate-50/80 transition-colors text-slate-700 cursor-pointer group"
                   >
                     <td className="py-3 px-4">
-                      <span className="font-semibold text-slate-800 group-hover:text-[#044d73] transition-colors">
-                        {item.name}
-                      </span>
-                      {item.alias && <p className="text-[11px] text-slate-400">{item.alias}</p>}
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-800 group-hover:text-[#044d73] transition-colors">
+                          {item.name}
+                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {item.brand && (
+                            <span className="inline-flex items-center text-[10px] font-bold text-[#044d73] bg-[#044d73]/10 px-1.5 py-0.2 rounded border border-[#044d73]/20">
+                              {item.brand}
+                            </span>
+                          )}
+                          {item.alias && <span className="text-[11px] text-slate-400">{item.alias}</span>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {item.category ? (
+                        <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                          {item.category}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-slate-500">{item.hsnCode || "—"}</td>
                     <td className="py-3 px-4 text-slate-500">
@@ -647,12 +871,18 @@ export default function InventoryPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-xl font-semibold">{viewingItem.name}</h3>
+                      {viewingItem.brand && (
+                        <span className="rounded-md bg-white/20 px-2 py-0.5 text-xs font-bold text-white border border-white/25">
+                          {viewingItem.brand}
+                        </span>
+                      )}
                       <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${stockStyle.bg} ${stockStyle.text}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${stockStyle.dot}`} />
                         {stockStyle.label}
                       </span>
                     </div>
                     <p className="text-xs text-white/70 mt-0.5">
+                      {viewingItem.category ? `Category: ${viewingItem.category} · ` : ""}
                       {viewingItem.alias ? `Alias: ${viewingItem.alias} · ` : ""}
                       HSN: {viewingItem.hsnCode || "—"} · Unit: {viewingItem.unit}
                       {viewingItem.altUnit ? ` / ${viewingItem.altUnit}` : ""}
@@ -690,9 +920,9 @@ export default function InventoryPage() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Packaging Units</span>
-                    <span className="text-sm font-semibold text-slate-800 mt-2 block">
-                      {viewingItem.unit}{viewingItem.altUnit ? ` / ${viewingItem.altUnit}` : ""}
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Category & Brand</span>
+                    <span className="text-xs font-semibold text-slate-800 mt-2 block truncate">
+                      {viewingItem.category || "Uncategorized"} {viewingItem.brand ? `(${viewingItem.brand})` : ""}
                     </span>
                   </div>
                 </div>
@@ -825,6 +1055,28 @@ export default function InventoryPage() {
                   <Field label="Item Name" span>
                     <TextInput required value={form.name} onChange={v => setField("name", v)} placeholder="e.g. Cefixime 200 MG" />
                   </Field>
+                  <Field label="Brand / Manufacturer" hint="Pick existing, click + to add new, or use list button to manage/delete">
+                    <CreatableSelect
+                      value={form.brand}
+                      options={brands}
+                      noun="brand"
+                      noneLabel="Select / None"
+                      onChange={v => setField("brand", v)}
+                      onCreate={addBrand}
+                      onDelete={deleteBrand}
+                    />
+                  </Field>
+                  <Field label="Category" hint="Pick existing, click + to add new, or use list button to manage/delete">
+                    <CreatableSelect
+                      value={form.category}
+                      options={categories}
+                      noun="category"
+                      noneLabel="Select / None"
+                      onChange={v => setField("category", v)}
+                      onCreate={addCategory}
+                      onDelete={deleteCategory}
+                    />
+                  </Field>
                   <Field label="Alias Name">
                     <TextInput value={form.alias} onChange={v => setField("alias", v)} placeholder="Short name" />
                   </Field>
@@ -835,6 +1087,7 @@ export default function InventoryPage() {
                     <CreatableSelect
                       value={form.unit} options={units} noun="unit"
                       onChange={v => setField("unit", v)} onCreate={addUnit}
+                      onDelete={deleteUnit}
                     />
                   </Field>
                   <Field label="Alternative Unit">
@@ -842,6 +1095,7 @@ export default function InventoryPage() {
                       value={form.altUnit} options={units.filter(u => u !== form.unit)} noun="unit"
                       noneLabel="None"
                       onChange={v => setField("altUnit", v)} onCreate={addUnit}
+                      onDelete={deleteUnit}
                     />
                   </Field>
                   <Field label="Low Stock Threshold" hint="Item is flagged “Low Stock” at or below this quantity" span>

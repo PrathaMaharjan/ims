@@ -5,13 +5,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     ChevronLeft, ChevronRight, LogOut, Menu, X,
-    LayoutDashboard, Boxes, Receipt,
+    LayoutDashboard, Boxes, Receipt, ShoppingCart,
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
-
-// type IconKey = 'dashboard' | 'inventory';
-type IconKey = 'dashboard' | 'inventory' | 'purchase';
+type IconKey = 'dashboard' | 'inventory' | 'purchase' | 'sales';
 
 type NavItem = {
     match: string;
@@ -25,12 +23,14 @@ const iconMap: Record<IconKey, LucideIcon> = {
     dashboard: LayoutDashboard,
     inventory: Boxes,
     purchase: Receipt,
+    sales: ShoppingCart,
 };
 
 const defaultItems: NavItem[] = [
     { match: '/pharma', href: '/pharma', label: 'Dashboard', icon: 'dashboard' },
     { match: '/pharma/inventory', href: '/pharma/inventory', label: 'Inventory', icon: 'inventory' },
     { match: '/pharma/purchase', href: '/pharma/purchase', label: 'Purchase', icon: 'purchase' },
+    // { match: '/pharma/sales', href: '/pharma/sales', label: 'Sales', icon: 'sales' },
 ];
 
 type SidebarUser = { name: string; email?: string };

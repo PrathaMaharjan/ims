@@ -306,11 +306,10 @@ function ItemPicker({ value, onSelect }: { value: string; onSelect: (item: Catal
         ref={buttonRef}
         type="button"
         onClick={toggleOpen}
-        className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${
-          open
-            ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white"
-            : "border-slate-200 bg-white hover:border-slate-300"
-        }`}
+        className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${open
+          ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white"
+          : "border-slate-200 bg-white hover:border-slate-300"
+          }`}
       >
         <span className={`truncate ${selected ? "font-semibold text-slate-800" : "text-slate-400"}`}>
           {selected ? selected.name : "Select item..."}
@@ -348,9 +347,8 @@ function ItemPicker({ value, onSelect }: { value: string; onSelect: (item: Catal
                       setOpen(false);
                       setQuery("");
                     }}
-                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${
-                      selected?.id === c.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
-                    }`}
+                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${selected?.id === c.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
+                      }`}
                   >
                     <div className="min-w-0">
                       <p className="truncate text-xs font-semibold">{c.name}</p>
@@ -566,7 +564,7 @@ export default function PurchasePage() {
       <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Purchase</h1>
-          <p className="text-xs text-white/70 mt-0.5">Manage purchase vouchers, item batches, and suppliers</p>
+
         </div>
         <button
           onClick={openAdd}
@@ -1090,11 +1088,10 @@ export default function PurchasePage() {
                                         <button
                                           type="button"
                                           onClick={() => toggleBatchExpand(line.id)}
-                                          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all ${
-                                            isExpanded
-                                              ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]"
-                                              : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                          }`}
+                                          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all ${isExpanded
+                                            ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]"
+                                            : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                            }`}
                                         >
                                           <Check className="w-3.5 h-3.5 text-emerald-600" />
                                           <span className="truncate max-w-[130px]">
@@ -1106,13 +1103,12 @@ export default function PurchasePage() {
                                         <button
                                           type="button"
                                           onClick={() => toggleBatchExpand(line.id)}
-                                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition-all ${
-                                            isExpanded
-                                              ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]"
-                                              : isMissingBatch
+                                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition-all ${isExpanded
+                                            ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]"
+                                            : isMissingBatch
                                               ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
                                               : "border-slate-200 bg-white text-slate-600 hover:border-[#044d73] hover:text-[#044d73]"
-                                          }`}
+                                            }`}
                                         >
                                           <Boxes className="w-3.5 h-3.5" />
                                           <span>Enter Batch</span>

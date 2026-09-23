@@ -5,15 +5,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     ChevronLeft, ChevronRight, LogOut, Menu, X,
-    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet,
+    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings,
     type LucideIcon,
 } from 'lucide-react';
-<<<<<<< HEAD
-type IconKey = 'dashboard' | 'inventory' | 'purchase' | 'sales' | 'suppliers' | 'expense';
-=======
 import { useAuth } from '@/context/auth-context';
-type IconKey = 'dashboard' | 'inventory' | 'purchase' | 'sales';
->>>>>>> 9ac2654949e33b59f71afa2c208ac89b9d9e609d
+type IconKey = 'dashboard' | 'inventory' | 'purchase' | 'sales' | 'suppliers' | 'expense' | 'analytics' | 'settings';
 
 type NavItem = {
     match: string;
@@ -30,6 +26,8 @@ const iconMap: Record<IconKey, LucideIcon> = {
     sales: ShoppingCart,
     suppliers: Users,
     expense: Wallet,
+    analytics: BarChart3,
+    settings: Settings,
 };
 
 const defaultItems: NavItem[] = [
@@ -39,6 +37,8 @@ const defaultItems: NavItem[] = [
     // { match: '/pharma/sales', href: '/pharma/sales', label: 'Sales', icon: 'sales' },
     { match: '/pharma/suppliers', href: '/pharma/suppliers', label: 'Suppliers', icon: 'suppliers' },
     { match: '/pharma/expense', href: '/pharma/expense', label: 'Expense', icon: 'expense' },
+    { match: '/pharma/analytics', href: '/pharma/analytics', label: 'Analytics', icon: 'analytics' },
+    { match: '/pharma/settings', href: '/pharma/settings', label: 'Settings', icon: 'settings' },
 ];
 
 type SidebarUser = { name: string; email?: string };
@@ -240,6 +240,16 @@ export function Sidebar({ items = defaultItems, brandName, logoUrl, user }: Side
                 >
                     <Menu size={20} />
                 </button>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
+                    {logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logoUrl} alt={brandName} className="h-full w-full object-cover" />
+                    ) : (
+                        <span className="text-xs font-bold text-[#044d73]">
+                            {brandName.charAt(0).toUpperCase()}
+                        </span>
+                    )}
+                </div>
                 <span className="truncate text-sm font-bold text-white">{brandName}</span>
             </div>
 

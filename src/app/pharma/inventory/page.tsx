@@ -299,11 +299,10 @@ function CreatableSelect({
           type="button"
           onClick={() => setManaging(p => !p)}
           title={`Manage / Delete ${noun}s`}
-          className={`shrink-0 rounded-lg border px-2.5 transition-colors ${
-            managing
+          className={`shrink-0 rounded-lg border px-2.5 transition-colors ${managing
               ? "border-[#044d73] bg-[#044d73] text-white"
               : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
-          }`}
+            }`}
         >
           <ListFilter className="h-4 w-4" />
         </button>
@@ -605,7 +604,7 @@ export default function InventoryPage() {
       <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Inventory</h1>
-          <p className="text-xs text-white/70 mt-0.5">Medicine catalog, brand names, categories, batch stock levels, and expiry tracking</p>
+
         </div>
         <button
           onClick={openAdd}

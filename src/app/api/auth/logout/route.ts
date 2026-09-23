@@ -8,6 +8,7 @@ export async function POST(req: NextRequest) {
 
   // Always clear the cookie client-side, even if the token is already invalid/expired.
   response.cookies.delete({ name: "refreshToken", path: "/api/auth" });
+  response.cookies.delete({ name: "isLoggedIn", path: "/" });
 
   if (!refreshToken) {
     return response;

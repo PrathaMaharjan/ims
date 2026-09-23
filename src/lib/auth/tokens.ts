@@ -7,7 +7,7 @@ if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
   throw new Error("ACCESS_TOKEN_SECRET and REFRESH_TOKEN_SECRET must be set");
 }
 
-const ACCESS_TOKEN_EXPIRY = "15m";
+const ACCESS_TOKEN_EXPIRY = "60m";
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 export const REFRESH_TOKEN_EXPIRY_MS = REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 

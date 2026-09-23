@@ -1,24 +1,34 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Lock, Mail, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '@/context/auth-context';
 
 export default function LoginPage() {
+  const { login } = useAuth();
+  const router = useRouter();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-
-    setTimeout(() => {
+    try {
+      await login(email, password);
+      console.log('Login successful');
+      router.push('/pharma');
+    } catch {
+      setError('Invalid email or password');
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   }
 
   return (

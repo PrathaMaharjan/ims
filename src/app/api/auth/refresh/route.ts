@@ -21,11 +21,19 @@ export async function POST(req: NextRequest) {
       path: "/api/auth",
       maxAge: REFRESH_TOKEN_EXPIRY_MS / 1000,
     });
+    response.cookies.set("isLoggedIn", "1", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: REFRESH_TOKEN_EXPIRY_MS / 1000,
+    });
 
     return response;
   } catch {
     const response = NextResponse.json({ error: "Session expired, please log in again" }, { status: 401 });
     response.cookies.delete("refreshToken");
+    response.cookies.delete({ name: "isLoggedIn", path: "/" });
     return response;
   }
 }

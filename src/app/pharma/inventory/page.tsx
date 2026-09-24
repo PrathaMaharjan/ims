@@ -7,6 +7,7 @@ import {
   ChevronLeft, ChevronRight, Check, Boxes, ListFilter,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -582,24 +583,26 @@ export default function InventoryPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Total Items", value: stats.total, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Package className="h-5 w-5 sm:h-6 sm:w-6" /> },
-          { label: "In Stock", value: stats.inStock, border: "border-l-emerald-500", iconBg: "bg-emerald-50 text-emerald-600", icon: <PackageCheck className="h-5 w-5 sm:h-6 sm:w-6" /> },
-          { label: "Low Stock", value: stats.lowStock, border: "border-l-amber-500", iconBg: "bg-amber-50 text-amber-600", icon: <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6" /> },
-          { label: "Out of Stock", value: stats.outOfStock, border: "border-l-red-500", iconBg: "bg-red-50 text-red-500", icon: <PackageX className="h-5 w-5 sm:h-6 sm:w-6" /> },
-        ].map(s => (
-          <div key={s.label} className={`rounded-xl border-l-4 ${s.border} border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between`}>
-            <div>
-              <p className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">{s.label}</p>
-              <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1 break-all">{s.value}</p>
-            </div>
-            <div className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl ${s.iconBg}`}>
-              {s.icon}
-            </div>
-          </div>
-        ))}
+ <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  {[
+    { label: "Total Items", value: stats.total, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Package className="h-5 w-5 sm:h-6 sm:w-6" /> },
+    { label: "In Stock", value: stats.inStock, border: "border-l-emerald-500", iconBg: "bg-emerald-50 text-emerald-600", icon: <PackageCheck className="h-5 w-5 sm:h-6 sm:w-6" /> },
+    { label: "Low Stock", value: stats.lowStock, border: "border-l-amber-500", iconBg: "bg-amber-50 text-amber-600", icon: <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6" /> },
+    { label: "Out of Stock", value: stats.outOfStock, border: "border-l-red-500", iconBg: "bg-red-50 text-red-500", icon: <PackageX className="h-5 w-5 sm:h-6 sm:w-6" /> },
+  ].map(s => (
+    <div key={s.label} className={`rounded-xl border-l-4 ${s.border} border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between`}>
+      <div>
+        <p className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">{s.label}</p>
+        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1 break-all">
+          <AnimatedStatValue value={s.value} />
+        </p>
       </div>
+      <div className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl ${s.iconBg}`}>
+        {s.icon}
+      </div>
+    </div>
+  ))}
+</div>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">

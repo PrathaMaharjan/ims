@@ -1,12 +1,13 @@
 import { pgTable, uuid, varchar, text, boolean, integer, timestamp } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { users } from "./users";
-import { products } from "./products";
-import { suppliers } from "./suppliers";
-import { batches } from "./batches";
-import { customers } from "./customers";
-import { purchases } from "./purchases";
 import { sales } from "./sales";
+import { purchases } from "./purchases";
+import { customers } from "./customers";
+import { batches } from "./batches";
+import { suppliers } from "./suppliers";
+import { products } from "./products";
+import { users } from "./users";
+
 
 // Single-tenant-per-account assumption: no roles table, one row = one account.
 export const organizations = pgTable("organizations", {
@@ -15,6 +16,7 @@ export const organizations = pgTable("organizations", {
   panVatNumber: varchar("pan_vat_number", { length: 50 }),
   vatRegistered: boolean("vat_registered").notNull().default(false),
   address: text("address"),
+  logoUrl: text("logo_url"), 
   phone: varchar("phone", { length: 30 }),
   email: varchar("email", { length: 255 }),
   // sequential invoice numbering, per org, no gaps

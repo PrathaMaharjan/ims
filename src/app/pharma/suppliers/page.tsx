@@ -19,6 +19,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -222,37 +223,43 @@ export default function SuppliersPage() {
       )}
 
       {/* Top Status Dashboards — reflect the current page only, not the full dataset */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 border-l-4 border-l-slate-400 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
-          <div>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Suppliers</p>
-            <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">{pagination?.total ?? suppliers.length}</p>
-          </div>
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-600 sm:h-12 sm:w-12">
-            <Users className="h-5 w-5 sm:h-6 sm:w-6" />
-          </div>
-        </div>
+  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+  <div className="rounded-xl border border-slate-200 border-l-4 border-l-slate-400 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
+    <div>
+      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Suppliers</p>
+      <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
+        <AnimatedStatValue value={pagination?.total ?? suppliers.length} />
+      </p>
+    </div>
+    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-600 sm:h-12 sm:w-12">
+      <Users className="h-5 w-5 sm:h-6 sm:w-6" />
+    </div>
+  </div>
 
-        <div className="rounded-xl border border-slate-200 border-l-4 border-l-emerald-500 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
-          <div>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Active (this page)</p>
-            <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">{activeCount}</p>
-          </div>
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 sm:h-12 sm:w-12">
-            <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6" />
-          </div>
-        </div>
+  <div className="rounded-xl border border-slate-200 border-l-4 border-l-emerald-500 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
+    <div>
+      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Active (this page)</p>
+      <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
+        <AnimatedStatValue value={activeCount} />
+      </p>
+    </div>
+    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 sm:h-12 sm:w-12">
+      <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6" />
+    </div>
+  </div>
 
-        <div className="rounded-xl border border-slate-200 border-l-4 border-l-amber-500 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
-          <div>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Inactive (this page)</p>
-            <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">{inactiveCount}</p>
-          </div>
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 sm:h-12 sm:w-12">
-            <XCircle className="h-5 w-5 sm:h-6 sm:w-6" />
-          </div>
-        </div>
-      </div>
+  <div className="rounded-xl border border-slate-200 border-l-4 border-l-amber-500 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
+    <div>
+      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Inactive (this page)</p>
+      <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
+        <AnimatedStatValue value={inactiveCount} />
+      </p>
+    </div>
+    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 sm:h-12 sm:w-12">
+      <XCircle className="h-5 w-5 sm:h-6 sm:w-6" />
+    </div>
+  </div>
+</div>
 
       {/* Control Actions Panel */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

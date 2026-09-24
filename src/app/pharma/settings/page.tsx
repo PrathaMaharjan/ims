@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, ChangeEvent, FormEvent } from "react";
+import { useState, useEffect, useRef, ChangeEvent, FormEvent, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
     Building2,
     User,
@@ -9,15 +10,16 @@ import {
     Check,
     Save,
     ImageIcon,
-    Settings as SettingsIcon,
     KeyRound,
     Eye,
     EyeOff,
 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
+import { api } from "@/lib/api-client";
 
 interface OrgDetails {
     businessName: string;
+    logoUrl: string | null;
     panVatNumber: string;
     vatRegistered: boolean;
     address: string;
@@ -25,30 +27,17 @@ interface OrgDetails {
     email: string;
 }
 
-const DEFAULT_ORG: OrgDetails = {
-    businessName: "pharma",
-    panVatNumber: "301234567",
-    vatRegistered: true,
-    address: "Kathmandu, Nepal",
-    phone: "9800000000",
-    email: "info@citypharmacy.com",
-};
-
 export default function SettingsPage() {
-    const { user: authUser } = useAuth();
+    const { user: authUser, logout } = useAuth();
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState<"org" | "user" | "password">("org");
 
-    // Organization details state
-    const [orgForm, setOrgForm] = useState<OrgDetails>(DEFAULT_ORG);
-    const [logoUrl, setLogoUrl] = useState<string>("");
+    const [orgForm, setOrgForm] = useState<OrgDetails | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null); // local preview only, until saved
+    const [pendingLogoDataUri, setPendingLogoDataUri] = useState<string | null>(null);
 
-    // User details state
-    const [userForm, setUserForm] = useState({
-        name: authUser?.name || "Sophan",
-        email: authUser?.email || "owner@gmail.com",
-    });
+    const [userForm, setUserForm] = useState({ name: "", email: "" });
 
-    // Password form state (frontend-only)
     const [passwordForm, setPasswordForm] = useState({
         current: "",
         newPassword: "",
@@ -59,108 +48,118 @@ export default function SettingsPage() {
     const [showConfirm, setShowConfirm] = useState(false);
     const [passwordError, setPasswordError] = useState<string | null>(null);
 
-    // Toast message state
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [savingOrg, setSavingOrg] = useState(false);
+    const [savingUser, setSavingUser] = useState(false);
+    const [savingPassword, setSavingPassword] = useState(false);
+
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Load static values from localStorage on mount
+    function triggerToast(msg: string) {
+        setToastMessage(msg);
+        setTimeout(() => setToastMessage(null), 3000);
+    }
+
+    // Organization data and user profile are independent — fetch in parallel.
+    // (User profile isn't refetched here since AuthProvider already holds it
+    // via /auth/me; we just seed the form from context once it's available.)
     useEffect(() => {
-        try {
-            const savedOrg = localStorage.getItem("pharma_org_details");
-            if (savedOrg) {
-                setOrgForm(JSON.parse(savedOrg));
+        async function loadSettings() {
+            setLoading(true);
+            setLoadError(null);
+            try {
+                const orgRes = await api.get("/api/organization");
+                setOrgForm(orgRes.data.organization);
+            } catch {
+                setLoadError("Failed to load organization details.");
+            } finally {
+                setLoading(false);
             }
-            const savedLogo = localStorage.getItem("pharma_logo");
-            if (savedLogo) {
-                setLogoUrl(savedLogo);
-            }
-            const savedUserName = localStorage.getItem("pharma_user_name");
-            const savedUserEmail = localStorage.getItem("pharma_user_email");
-            if (savedUserName || savedUserEmail) {
-                setUserForm({
-                    name: savedUserName || authUser?.name || "Sophan",
-                    email: savedUserEmail || authUser?.email || "owner@gmail.com",
-                });
-            }
-        } catch (e) {
-            console.error("Error loading settings:", e);
+        }
+        loadSettings();
+    }, []);
+
+    useEffect(() => {
+        if (authUser) {
+            setUserForm({ name: authUser.name, email: authUser.email });
         }
     }, [authUser]);
 
-    const triggerToast = (msg: string) => {
-        setToastMessage(msg);
-        setTimeout(() => setToastMessage(null), 3000);
-    };
-
-    // Save organization details
-    const handleSaveOrg = (e: FormEvent) => {
+    async function handleSaveOrg(e: FormEvent) {
         e.preventDefault();
-        try {
-            localStorage.setItem("pharma_org_details", JSON.stringify(orgForm));
-            localStorage.setItem("pharma_business_name", orgForm.businessName);
-            if (logoUrl) {
-                localStorage.setItem("pharma_logo", logoUrl);
-            } else {
-                localStorage.removeItem("pharma_logo");
-            }
-            window.dispatchEvent(new Event("pharma_org_updated"));
-            triggerToast("Organization details updated successfully!");
-        } catch (e) {
-            console.error("Failed to save org details:", e);
-        }
-    };
+        if (!orgForm) return;
 
-    // Handle logo upload
-    const handleLogoUpload = (e: ChangeEvent<HTMLInputElement>) => {
+        setSavingOrg(true);
+        try {
+            const payload: Record<string, unknown> = {
+                businessName: orgForm.businessName,
+                panVatNumber: orgForm.panVatNumber || undefined,
+                vatRegistered: orgForm.vatRegistered,
+                address: orgForm.address || undefined,
+                phone: orgForm.phone || undefined,
+                email: orgForm.email || undefined,
+            };
+            // Logo is only sent when a new file was actually chosen this session —
+            // avoids re-uploading to Cloudinary on every unrelated field save.
+            if (pendingLogoDataUri) {
+                payload.logoDataUri = pendingLogoDataUri;
+            }
+
+            const res = await api.patch("/api/organization", payload);
+            setOrgForm(res.data.organization);
+            setPendingLogoDataUri(null);
+            setLogoPreview(null);
+            triggerToast("Organization details updated successfully!");
+        } catch {
+            triggerToast("Failed to save organization details.");
+        } finally {
+            setSavingOrg(false);
+        }
+    }
+
+    function handleLogoUpload(e: ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
         if (!file) return;
 
         if (!file.type.startsWith("image/")) {
-            alert("Please choose a valid image file.");
+            triggerToast("Please choose a valid image file.");
             return;
         }
 
         const reader = new FileReader();
         reader.onload = () => {
             const dataUrl = reader.result as string;
-            setLogoUrl(dataUrl);
-            try {
-                localStorage.setItem("pharma_logo", dataUrl);
-                window.dispatchEvent(new Event("pharma_org_updated"));
-                triggerToast("Logo uploaded and updated in sidebar!");
-            } catch (err) {
-                console.error("Error saving logo:", err);
-            }
+            setLogoPreview(dataUrl);
+            setPendingLogoDataUri(dataUrl);
         };
         reader.readAsDataURL(file);
-    };
+    }
 
-    // Remove logo
-    const handleRemoveLogo = () => {
-        setLogoUrl("");
-        try {
-            localStorage.removeItem("pharma_logo");
-            window.dispatchEvent(new Event("pharma_org_updated"));
-            triggerToast("Logo removed from sidebar.");
-        } catch (err) {
-            console.error("Error removing logo:", err);
-        }
-    };
+    function handleRemoveLogoPreview() {
 
-    // Save user details
-    const handleSaveUser = (e: FormEvent) => {
+        setLogoPreview(null);
+        setPendingLogoDataUri(null);
+    }
+
+    async function handleSaveUser(e: FormEvent) {
         e.preventDefault();
+        setSavingUser(true);
         try {
-            localStorage.setItem("pharma_user_name", userForm.name);
-            localStorage.setItem("pharma_user_email", userForm.email);
+            await api.patch("/api/users/me", {
+                name: userForm.name,
+                email: userForm.email,
+            });
             triggerToast("User details updated successfully!");
-        } catch (e) {
-            console.error("Failed to save user details:", e);
+        } catch (err: any) {
+            triggerToast(err?.response?.data?.error ?? "Failed to save user details.");
+        } finally {
+            setSavingUser(false);
         }
-    };
+    }
 
-    // Handle password change (frontend only)
-    const handleSavePassword = (e: FormEvent) => {
+    async function handleSavePassword(e: FormEvent) {
         e.preventDefault();
         setPasswordError(null);
 
@@ -168,8 +167,8 @@ export default function SettingsPage() {
             setPasswordError("Please enter your current password.");
             return;
         }
-        if (passwordForm.newPassword.length < 6) {
-            setPasswordError("New password must be at least 6 characters long.");
+        if (passwordForm.newPassword.length < 8) {
+            setPasswordError("New password must be at least 8 characters long.");
             return;
         }
         if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -177,15 +176,44 @@ export default function SettingsPage() {
             return;
         }
 
-        setPasswordForm({ current: "", newPassword: "", confirmPassword: "" });
-        triggerToast("Password changed successfully!");
-    };
+        setSavingPassword(true);
+        try {
+            await api.patch("/api/users/password", {
+                currentPassword: passwordForm.current,
+                newPassword: passwordForm.newPassword,
+            });
+            setPasswordForm({ current: "", newPassword: "", confirmPassword: "" });
+            // The server just invalidated every session for this user, including
+            // this one's refresh token — log out immediately so the next API
+            // call doesn't 401 unexpectedly, and send them to log back in.
+            triggerToast("Password changed. Please log in again.");
+            await logout();
+            router.push("/login");
+        } catch (err: any) {
+            setPasswordError(err?.response?.data?.error ?? "Failed to change password.");
+        } finally {
+            setSavingPassword(false);
+        }
+    }
+
+    if (loading) {
+        return <div className="py-16 text-center text-sm text-slate-400">Loading settings...</div>;
+    }
+
+    if (loadError || !orgForm) {
+        return (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+                {loadError ?? "Failed to load settings."}
+            </div>
+        );
+    }
+
+    const displayedLogo = logoPreview ?? orgForm.logoUrl;
 
     return (
         <div className="flex flex-col gap-8 pb-12">
-            {/* Toast notification */}
             {toastMessage && (
-                <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl bg-slate-900 px-4 py-3 text-white shadow-2xl animate-in fade-in slide-in-from-bottom-5">
+                <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl bg-slate-900 px-4 py-3 text-white shadow-2xl">
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white">
                         <Check className="h-3.5 w-3.5 stroke-[3]" />
                     </div>
@@ -193,45 +221,30 @@ export default function SettingsPage() {
                 </div>
             )}
 
-            {/* Header */}
             <div className="rounded-xl bg-[#044d73] px-6 py-6 text-white shadow-sm flex items-center justify-between">
-                <div className="flex items-center gap-4">
-
-                    <div>
-                        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-
-                    </div>
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
                 </div>
             </div>
 
-            {/* Tabs */}
             <div className="flex items-center gap-2 border-b border-slate-200">
                 <button
                     onClick={() => setActiveTab("org")}
-                    className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all ${activeTab === "org"
-                            ? "border-[#044d73] text-[#044d73]"
-                            : "border-transparent text-slate-500 hover:text-slate-800"
-                        }`}
+                    className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all ${activeTab === "org" ? "border-[#044d73] text-[#044d73]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
                 >
                     <Building2 className="h-4 w-4" />
                     Organization Details
                 </button>
                 <button
                     onClick={() => setActiveTab("user")}
-                    className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all ${activeTab === "user"
-                            ? "border-[#044d73] text-[#044d73]"
-                            : "border-transparent text-slate-500 hover:text-slate-800"
-                        }`}
+                    className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all ${activeTab === "user" ? "border-[#044d73] text-[#044d73]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
                 >
                     <User className="h-4 w-4" />
                     User Details
                 </button>
                 <button
                     onClick={() => setActiveTab("password")}
-                    className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all ${activeTab === "password"
-                            ? "border-[#044d73] text-[#044d73]"
-                            : "border-transparent text-slate-500 hover:text-slate-800"
-                        }`}
+                    className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all ${activeTab === "password" ? "border-[#044d73] text-[#044d73]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
                 >
                     <KeyRound className="h-4 w-4" />
                     Change Password
@@ -241,14 +254,13 @@ export default function SettingsPage() {
             {/* Organization Details Tab */}
             {activeTab === "org" && (
                 <form onSubmit={handleSaveOrg} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
-                    {/* Logo Section */}
                     <div className="border-b border-slate-100 pb-6">
                         <h3 className="text-sm font-bold text-slate-900 mb-1">Organization Logo</h3>
 
                         <div className="flex items-center gap-5 mt-3">
                             <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-slate-200 bg-slate-50 shadow-sm">
-                                {logoUrl ? (
-                                    <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" />
+                                {displayedLogo ? (
+                                    <img src={displayedLogo} alt="Logo" className="h-full w-full object-cover" />
                                 ) : (
                                     <div className="flex flex-col items-center justify-center text-slate-400">
                                         <ImageIcon className="h-6 w-6 mb-0.5 stroke-1" />
@@ -260,13 +272,7 @@ export default function SettingsPage() {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-3">
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    onChange={handleLogoUpload}
-                                    accept="image/*"
-                                    className="hidden"
-                                />
+                                <input type="file" ref={fileInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
                                 <button
                                     type="button"
                                     onClick={() => fileInputRef.current?.click()}
@@ -276,83 +282,64 @@ export default function SettingsPage() {
                                     Upload Logo
                                 </button>
 
-                                {logoUrl && (
+                                {pendingLogoDataUri && (
                                     <button
                                         type="button"
-                                        onClick={handleRemoveLogo}
+                                        onClick={handleRemoveLogoPreview}
                                         className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50/50 px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
                                     >
                                         <Trash2 className="h-4 w-4" />
-                                        Remove Logo
+                                        Cancel New Logo
                                     </button>
                                 )}
                             </div>
                         </div>
+                        {pendingLogoDataUri && (
+                            <p className="text-[11px] text-amber-600 mt-2">New logo selected — click "Save" below to upload it.</p>
+                        )}
                     </div>
 
-                    {/* Specific 5 Fields (businessName, panVatNumber, phone, email, address) */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
-                        {/* Business Name */}
                         <div>
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                Business Name
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">Business Name</label>
                             <input
-                                type="text"
-                                required
-                                value={orgForm.businessName}
+                                type="text" required value={orgForm.businessName}
                                 onChange={(e) => setOrgForm({ ...orgForm, businessName: e.target.value })}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                             />
                         </div>
 
-                        {/* PAN / VAT Number */}
                         <div>
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                PAN / VAT Number
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">PAN / VAT Number</label>
                             <input
-                                type="text"
-                                value={orgForm.panVatNumber}
+                                type="text" value={orgForm.panVatNumber ?? ""}
                                 onChange={(e) => setOrgForm({ ...orgForm, panVatNumber: e.target.value })}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                             />
                         </div>
 
-                        {/* Phone */}
                         <div>
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                Phone
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">Phone</label>
                             <input
-                                type="text"
-                                value={orgForm.phone}
+                                type="text" value={orgForm.phone ?? ""}
                                 onChange={(e) => setOrgForm({ ...orgForm, phone: e.target.value })}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                             />
                         </div>
 
-                        {/* Email */}
                         <div>
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                Email
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">Email</label>
                             <input
-                                type="email"
-                                value={orgForm.email}
+                                type="email" value={orgForm.email ?? ""}
                                 onChange={(e) => setOrgForm({ ...orgForm, email: e.target.value })}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                             />
                         </div>
 
-                        {/* Address */}
                         <div className="sm:col-span-2">
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                Address
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">Address</label>
                             <input
-                                type="text"
-                                value={orgForm.address}
+                                type="text" value={orgForm.address ?? ""}
                                 onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                             />
@@ -362,10 +349,11 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-end pt-4 border-t border-slate-100">
                         <button
                             type="submit"
-                            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors"
+                            disabled={savingOrg}
+                            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50"
                         >
                             <Save className="h-4 w-4" />
-                            Save Organization Details
+                            {savingOrg ? "Saving..." : "Save Organization Details"}
                         </button>
                     </div>
                 </form>
@@ -379,33 +367,23 @@ export default function SettingsPage() {
                             <User className="h-4 w-4 text-[#044d73]" />
                             User Details
                         </h3>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                            Update personal account name and contact email
-                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">Update personal account name and contact email</p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
                         <div>
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                Name
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">Name</label>
                             <input
-                                type="text"
-                                required
-                                value={userForm.name}
+                                type="text" required value={userForm.name}
                                 onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                             />
                         </div>
 
                         <div>
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                Email
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">Email</label>
                             <input
-                                type="email"
-                                required
-                                value={userForm.email}
+                                type="email" required value={userForm.email}
                                 onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                             />
@@ -415,16 +393,17 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-end pt-4 border-t border-slate-100">
                         <button
                             type="submit"
-                            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors"
+                            disabled={savingUser}
+                            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50"
                         >
                             <Save className="h-4 w-4" />
-                            Save User Details
+                            {savingUser ? "Saving..." : "Save User Details"}
                         </button>
                     </div>
                 </form>
             )}
 
-            {/* Change Password Tab (Frontend-only) */}
+            {/* Change Password Tab */}
             {activeTab === "password" && (
                 <form onSubmit={handleSavePassword} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
                     <div className="border-b border-slate-100 pb-3">
@@ -433,7 +412,7 @@ export default function SettingsPage() {
                             Change Password
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5">
-                            Update your login password to secure your account
+                            Update your login password to secure your account. You'll be logged out of every device afterward.
                         </p>
                     </div>
 
@@ -444,73 +423,49 @@ export default function SettingsPage() {
                     )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
-                        {/* Current Password */}
                         <div className="sm:col-span-2">
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                Current Password
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">Current Password</label>
                             <div className="relative">
                                 <input
-                                    type={showCurrent ? "text" : "password"}
-                                    required
+                                    type={showCurrent ? "text" : "password"} required
                                     value={passwordForm.current}
                                     onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
                                     placeholder="Enter current password"
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowCurrent(!showCurrent)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                                >
+                                <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                                     {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
                         </div>
 
-                        {/* New Password */}
                         <div>
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                New Password
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">New Password</label>
                             <div className="relative">
                                 <input
-                                    type={showNew ? "text" : "password"}
-                                    required
+                                    type={showNew ? "text" : "password"} required
                                     value={passwordForm.newPassword}
                                     onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                                    placeholder="At least 6 characters"
+                                    placeholder="At least 8 characters"
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowNew(!showNew)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                                >
+                                <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                                     {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
                         </div>
 
-                        {/* Confirm Password */}
                         <div>
-                            <label className="block font-semibold text-slate-700 mb-1.5">
-                                Confirm New Password
-                            </label>
+                            <label className="block font-semibold text-slate-700 mb-1.5">Confirm New Password</label>
                             <div className="relative">
                                 <input
-                                    type={showConfirm ? "text" : "password"}
-                                    required
+                                    type={showConfirm ? "text" : "password"} required
                                     value={passwordForm.confirmPassword}
                                     onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
                                     placeholder="Re-enter new password"
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowConfirm(!showConfirm)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                                >
+                                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                                     {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
@@ -520,10 +475,11 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-end pt-4 border-t border-slate-100">
                         <button
                             type="submit"
-                            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors"
+                            disabled={savingPassword}
+                            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50"
                         >
                             <Save className="h-4 w-4" />
-                            Update Password
+                            {savingPassword ? "Updating..." : "Update Password"}
                         </button>
                     </div>
                 </form>

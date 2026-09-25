@@ -103,3 +103,20 @@ export async function deleteSupplier(organizationId: string, id: string) {
 
   return deleted;
 }
+
+export async function getSupplierStats(organizationId: string) {
+  const [totalsRow] = await db
+    .select({
+      totalCount: sql<number>`count(*)`,
+      activeCount: sql<number>`count(*) filter (where ${suppliers.status} = true)`,
+      inactiveCount: sql<number>`count(*) filter (where ${suppliers.status} = false)`,
+    })
+    .from(suppliers)
+    .where(eq(suppliers.organizationId, organizationId));
+
+  return {
+    totalCount: Number(totalsRow?.totalCount ?? 0),
+    activeCount: Number(totalsRow?.activeCount ?? 0),
+    inactiveCount: Number(totalsRow?.inactiveCount ?? 0),
+  };
+}

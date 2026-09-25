@@ -16,7 +16,8 @@ import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 type Num = number | "";
 type PaymentType = "CASH" | "CREDIT";
 type PurcType = "VAT_EXEMPT" | "VAT_ITEM_WISE" | "VAT_TAX_INCL";
-type DiscountType = "Percentage" | "Flat"; // UI-only concept, folded into a single `discount` amount server-side
+type DiscountType = "Percentage" | "Flat";
+type RoundingDirection = "UP" | "DOWN";
 
 const PURC_TYPE_LABELS: Record<PurcType, string> = {
   VAT_EXEMPT: "VAT/Exempt",
@@ -53,8 +54,8 @@ interface BatchDetails {
 }
 
 interface LineItemForm {
-  id: string; // client-side row id
-  purchaseItemId?: string; // set when editing an existing purchase's line
+  id: string;
+  purchaseItemId?: string;
   itemId: string;
   itemName: string;
   unit: string;
@@ -78,6 +79,7 @@ interface PurchaseForm {
   discountType: DiscountType;
   freightCharges: Num;
   vatRefund: Num;
+  roundingDirection: RoundingDirection;
 }
 
 // Shape returned by GET /purchases (list) and GET /purchases/:id
@@ -87,6 +89,7 @@ interface PurchaseRecord {
   supplierInvoiceNumber: string | null;
   paymentType: PaymentType;
   purcType: PurcType;
+  roundingDirection: RoundingDirection;
   subtotal: string;
   discount: string;
   freightCharges: string;
@@ -105,7 +108,7 @@ interface PurchaseRecord {
     mrp: string;
     vatApplicable: boolean;
     lineTotal: string;
-    batch?: { salePrice: string | null } | null;
+   batch?: { salePrice: string | null; note: string | null } | null;
   }>;
 }
 
@@ -149,6 +152,7 @@ function emptyForm(): PurchaseForm {
     discountType: "Flat",
     freightCharges: "",
     vatRefund: "",
+    roundingDirection: "DOWN",
   };
 }
 
@@ -164,8 +168,6 @@ function subtotalOf(items: LineItemForm[]) {
 function discountValueOf(subtotal: number, amount: Num, type: DiscountType) {
   return type === "Percentage" ? (subtotal * n(amount)) / 100 : n(amount);
 }
-// Client-side estimate only — the server (calculatePurchaseTotals) recomputes
-// this authoritatively; this is just for live UI feedback before submit.
 function estimateVat(items: LineItemForm[], purcType: PurcType, vatRate: Num) {
   const rate = n(vatRate);
   const subtotal = subtotalOf(items);
@@ -177,7 +179,6 @@ function estimateVat(items: LineItemForm[], purcType: PurcType, vatRate: Num) {
     );
     return (vatableSubtotal * rate) / 100;
   }
-  // VAT_TAX_INCL
   return subtotal - subtotal / (1 + rate / 100);
 }
 
@@ -512,31 +513,33 @@ export default function PurchasePage() {
       supplierInvoiceNumber: record.supplierInvoiceNumber ?? "",
       paymentType: record.paymentType,
       purcType: record.purcType,
-      vatRate: 13, // vatRate isn't persisted as its own field on the purchase row; re-entered on edit
+      vatRate: 13,
       supplierId: record.supplier?.id ?? "",
       supplierName: record.supplier?.name ?? "",
+      roundingDirection: record.roundingDirection ?? "DOWN",
       items: record.items.map((it) => {
-        const product = products.find((p) => p.id === it.productId);
-        return {
-          id: crypto.randomUUID(),
-          purchaseItemId: it.id,
-          itemId: it.productId,
-          itemName: product?.name ?? "",
-          unit: product?.unit ?? "",
-          altUnit: product?.alternativeUnit ?? "",
-          vatApplicable: it.vatApplicable,
-          qty: it.quantity,
-          price: Number(it.purchaseRate),
-          batch: {
-            batchNo: it.batchNumber,
-            qty: it.quantity,
-            mfgDate: it.manufacturingDate ?? "",
-            expDate: it.expiryDate,
-            mrp: Number(it.mrp),
-            salePrice: it.batch?.salePrice ? Number(it.batch.salePrice) : "",
-          },
-        };
-      }),
+  const product = products.find((p) => p.id === it.productId);
+  return {
+    id: crypto.randomUUID(),
+    purchaseItemId: it.id,
+    itemId: it.productId,
+    itemName: product?.name ?? "",
+    unit: product?.unit ?? "",
+    altUnit: product?.alternativeUnit ?? "",
+    vatApplicable: it.vatApplicable,
+    qty: it.quantity,
+    price: Number(it.purchaseRate),
+    batch: {
+      batchNo: it.batchNumber,
+      qty: it.quantity,
+      mfgDate: it.manufacturingDate ?? "",
+      expDate: it.expiryDate,
+      mrp: Number(it.mrp),
+      salePrice: it.batch?.salePrice ? Number(it.batch.salePrice) : "",
+      note: it.batch?.note ?? "", // ADDED — restores the saved note when editing
+    },
+  };
+}),
       discountAmount: Number(record.discount),
       discountType: "Flat",
       freightCharges: Number(record.freightCharges),
@@ -604,36 +607,39 @@ export default function PurchasePage() {
   const subtotal = subtotalOf(form.items);
   const discountTotal = discountValueOf(subtotal, form.discountAmount, form.discountType);
   const vatEstimate = estimateVat(form.items, form.purcType, form.vatRate);
+  const rawTotalEstimate = subtotal - discountTotal + n(form.freightCharges) + vatEstimate - n(form.vatRefund);
   const grandTotalEstimate =
-    Math.round(subtotal - discountTotal + n(form.freightCharges) + vatEstimate - n(form.vatRefund));
+    form.roundingDirection === "UP" ? Math.ceil(rawTotalEstimate) : Math.floor(rawTotalEstimate);
 
-  function buildPayload() {
-    return {
-      supplierId: form.supplierId,
-      supplierInvoiceNumber: form.supplierInvoiceNumber.trim() || undefined,
-      purchaseDate: form.date,
-      purcType: form.purcType,
-      paymentType: form.paymentType,
-      discount: n(form.discountAmount), // Percentage discount resolved client-side into a flat Rs. amount before sending
-      freightCharges: n(form.freightCharges),
-      vatRefund: n(form.vatRefund),
-      vatRate: n(form.vatRate),
-      items: validItems.map((li) => ({
-        ...(li.purchaseItemId ? { purchaseItemId: li.purchaseItemId } : {}),
-        productId: li.itemId,
-        purchaseRate: n(li.price),
-        vatApplicable: li.vatApplicable,
-        batch: {
-          batchNumber: li.batch!.batchNo.trim(),
-          quantity: n(li.qty),
-          expiryDate: li.batch!.expDate,
-          manufacturingDate: li.batch!.mfgDate || undefined,
-          mrp: li.batch!.mrp === "" ? undefined : n(li.batch!.mrp),
-          salePrice: li.batch!.salePrice === "" ? undefined : n(li.batch!.salePrice),
-        },
-      })),
-    };
-  }
+function buildPayload() {
+  return {
+    supplierId: form.supplierId,
+    supplierInvoiceNumber: form.supplierInvoiceNumber.trim() || undefined,
+    purchaseDate: form.date,
+    purcType: form.purcType,
+    paymentType: form.paymentType,
+    roundingDirection: form.roundingDirection,
+    discount: n(form.discountAmount),
+    freightCharges: n(form.freightCharges),
+    vatRefund: n(form.vatRefund),
+    vatRate: n(form.vatRate),
+    items: validItems.map((li) => ({
+      ...(li.purchaseItemId ? { purchaseItemId: li.purchaseItemId } : {}),
+      productId: li.itemId,
+      purchaseRate: n(li.price),
+      vatApplicable: li.vatApplicable,
+      batch: {
+        batchNumber: li.batch!.batchNo.trim(),
+        quantity: n(li.qty),
+        expiryDate: li.batch!.expDate,
+        manufacturingDate: li.batch!.mfgDate || undefined,
+        mrp: li.batch!.mrp === "" ? undefined : n(li.batch!.mrp),
+        salePrice: li.batch!.salePrice === "" ? undefined : n(li.batch!.salePrice),
+        note: li.batch!.note?.trim() || undefined, // ADDED — was being dropped before this
+      },
+    })),
+  };
+}
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -681,7 +687,6 @@ export default function PurchasePage() {
       <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Purchase</h1>
-
         </div>
         <button
           onClick={openAdd}
@@ -700,26 +705,26 @@ export default function PurchasePage() {
       )}
 
       {/* Stats */}
-     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-  {[
-    { label: "Total Purchases", value: stats.total, format: undefined, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Receipt className="h-5 w-5 sm:h-6 sm:w-6" /> },
-    { label: "Page Amount", value: stats.amount, format: rs, border: "border-l-[#044d73]", iconBg: "bg-[#044d73]/10 text-[#044d73]", icon: <Wallet className="h-5 w-5 sm:h-6 sm:w-6" /> },
-    { label: "Cash (this page)", value: stats.cash, format: undefined, border: "border-l-emerald-500", iconBg: "bg-emerald-50 text-emerald-600", icon: <Banknote className="h-5 w-5 sm:h-6 sm:w-6" /> },
-    { label: "Credit (this page)", value: stats.credit, format: undefined, border: "border-l-amber-500", iconBg: "bg-amber-50 text-amber-600", icon: <CreditCard className="h-5 w-5 sm:h-6 sm:w-6" /> },
-  ].map(s => (
-    <div key={s.label} className={`rounded-xl border-l-4 ${s.border} border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between`}>
-      <div>
-        <p className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">{s.label}</p>
-        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1 break-all">
-          <AnimatedStatValue value={s.value} format={s.format} />
-        </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Total Purchases", value: stats.total, format: undefined, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Receipt className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "Page Amount", value: stats.amount, format: rs, border: "border-l-[#044d73]", iconBg: "bg-[#044d73]/10 text-[#044d73]", icon: <Wallet className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "Cash (this page)", value: stats.cash, format: undefined, border: "border-l-emerald-500", iconBg: "bg-emerald-50 text-emerald-600", icon: <Banknote className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "Credit (this page)", value: stats.credit, format: undefined, border: "border-l-amber-500", iconBg: "bg-amber-50 text-amber-600", icon: <CreditCard className="h-5 w-5 sm:h-6 sm:w-6" /> },
+        ].map(s => (
+          <div key={s.label} className={`rounded-xl border-l-4 ${s.border} border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between`}>
+            <div>
+              <p className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">{s.label}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1 break-all">
+                <AnimatedStatValue value={s.value} format={s.format} />
+              </p>
+            </div>
+            <div className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl ${s.iconBg}`}>
+              {s.icon}
+            </div>
+          </div>
+        ))}
       </div>
-      <div className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl ${s.iconBg}`}>
-        {s.icon}
-      </div>
-    </div>
-  ))}
-</div>
 
       {/* Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -1323,6 +1328,35 @@ export default function PurchasePage() {
                       </select>
                     </Field>
                   </div>
+
+                  <div className="mt-4 max-w-sm">
+                    <Field label="Rounding">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setForm(p => ({ ...p, roundingDirection: "DOWN" }))}
+                          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                            form.roundingDirection === "DOWN"
+                              ? "border-[#044d73] bg-[#044d73] text-white"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                          }`}
+                        >
+                          Round Down (−)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setForm(p => ({ ...p, roundingDirection: "UP" }))}
+                          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                            form.roundingDirection === "UP"
+                              ? "border-[#044d73] bg-[#044d73] text-white"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                          }`}
+                        >
+                          Round Up (+)
+                        </button>
+                      </div>
+                    </Field>
+                  </div>
                 </Section>
 
                 <div className="ml-auto w-full max-w-xs space-y-1.5 rounded-xl bg-slate-50 p-4 border border-slate-200">
@@ -1337,6 +1371,9 @@ export default function PurchasePage() {
                   </div>
                   <div className="flex justify-between text-xs sm:text-sm text-slate-500">
                     <span>VAT (estimate)</span><span>{rs(vatEstimate)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs sm:text-sm text-slate-500">
+                    <span>Rounding</span><span>{form.roundingDirection === "UP" ? "Round Up (+)" : "Round Down (−)"}</span>
                   </div>
                   <div className="flex justify-between border-t border-slate-200 pt-2 text-sm sm:text-base font-bold text-slate-800">
                     <span>Grand Total (estimate)</span><span>{rs(grandTotalEstimate)}</span>

@@ -5,7 +5,7 @@ import { suppliers } from "./suppliers";
 import { products } from "./products";
 import { batches } from "./batches";
 import { users } from "./users";
-import { paymentStatusEnum, purchasePaymentTypeEnum, purcTypeEnum } from "./enums";
+import { paymentStatusEnum, purchasePaymentTypeEnum, purcTypeEnum, roundingDirectionEnum } from "./enums";
 
 export const purchases = pgTable("purchases", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -19,7 +19,7 @@ export const purchases = pgTable("purchases", {
   purchaseDate: date("purchase_date").notNull(),
   purcType: purcTypeEnum("purc_type").notNull().default("VAT_ITEM_WISE"),
   paymentType: purchasePaymentTypeEnum("payment_type").notNull().default("CASH"),
-
+  roundingDirection: roundingDirectionEnum("rounding_direction").notNull().default("DOWN"),
   subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
   discount: numeric("discount", { precision: 12, scale: 2 }).notNull().default("0"),
   freightCharges: numeric("freight_charges", { precision: 12, scale: 2 })

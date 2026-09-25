@@ -28,7 +28,7 @@ interface ExpenseCategory {
   name: string;
 }
 
-
+// Matches GET /expenses response shape
 interface ApiExpense {
   id: string;
   categoryId: string | null;
@@ -56,9 +56,22 @@ interface Pagination {
   totalPages: number;
 }
 
+// Whole-dataset totals — computed once from a full fetch on load, then kept
+// in sync incrementally as expenses are added/edited/deleted, never by
+// re-fetching and recomputing from scratch on every write.
+interface ExpenseStats {
+  totalCount: number;
+  totalAmount: number;
+  manualCount: number;
+  manualAmount: number;
+  inventoryCount: number;
+  inventoryAmount: number;
+}
+
 const ADD_NEW_VALUE = "__add_new__";
 const PAGE_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 400;
+const STATS_FETCH_LIMIT = 100;
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-NP", {
@@ -88,6 +101,25 @@ function emptyForm() {
   };
 }
 
+function computeStats(all: ApiExpense[]): ExpenseStats {
+  const isInventory = (e: ApiExpense) => e.category?.name === "Inventory";
+  const manual = all.filter((e) => !isInventory(e));
+  const inventory = all.filter(isInventory);
+
+  return {
+    totalCount: all.length,
+    totalAmount: all.reduce((s, e) => s + Number(e.amount), 0),
+    manualCount: manual.length,
+    manualAmount: manual.reduce((s, e) => s + Number(e.amount), 0),
+    inventoryCount: inventory.length,
+    inventoryAmount: inventory.reduce((s, e) => s + Number(e.amount), 0),
+  };
+}
+
+function isInventoryExpense(e: { category?: { name: string } | null }) {
+  return e.category?.name === "Inventory";
+}
+
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<DisplayExpense[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -97,6 +129,15 @@ export default function ExpensesPage() {
     totalPages: 1,
   });
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+
+  const [stats, setStats] = useState<ExpenseStats>({
+    totalCount: 0,
+    totalAmount: 0,
+    manualCount: 0,
+    manualAmount: 0,
+    inventoryCount: 0,
+    inventoryAmount: 0,
+  });
 
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [loadingExpenses, setLoadingExpenses] = useState(true);
@@ -116,15 +157,11 @@ export default function ExpensesPage() {
     );
   }
 
-  // Client-side text search — applied to the current page only, since the
-  // backend doesn't support free-text search on description/notes. This
-  // stays purely manual for now; the inventory/purchase merge will come later.
   const [search, setSearch] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [categoryFilter, setCategoryFilter] = useState<string>("All"); // server-side filter
+  const [categoryFilter, setCategoryFilter] = useState<string>("All");
 
-  // Date range — server-side filter, debounced before hitting the network.
   const [dateFromInput, setDateFromInput] = useState("");
   const [dateToInput, setDateToInput] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -175,36 +212,60 @@ export default function ExpensesPage() {
     loadCategories();
   }, [loadCategories]);
 
-  /* ---- expenses: server-driven pagination + category/date filters ---- */
+  /* ---- stats: one full fetch on initial load only — after that, updated
+     incrementally in state as expenses are added/edited/deleted ---- */
 
-  const loadExpenses = useCallback(async () => {
-    setLoadingExpenses(true);
+  const loadStats = useCallback(async () => {
     try {
-      const params: Record<string, string | number> = {
-        page: currentPage,
-        limit: PAGE_LIMIT,
-      };
-      if (categoryFilter !== "All") params.categoryId = categoryFilter;
-      if (dateFrom && dateTo) {
-        params.startDate = dateFrom;
-        params.endDate = dateTo;
-      }
-
-      const res = await api.get("/api/expenses", { params });
-      const tagged: DisplayExpense[] = res.data.expenses.map(
-        (e: ApiExpense) => ({
-          ...e,
-          source: "manual" as const,
-        }),
-      );
-      setExpenses(tagged);
-      setPagination(res.data.pagination);
+      const res = await api.get("/api/expenses", {
+        params: { page: 1, limit: STATS_FETCH_LIMIT },
+      });
+      const all: ApiExpense[] = res.data.expenses;
+      setStats(computeStats(all));
     } catch {
-      setLoadError("Failed to load expenses.");
-    } finally {
-      setLoadingExpenses(false);
+      // Non-critical — leave previously computed stats displayed.
     }
-  }, [currentPage, categoryFilter, dateFrom, dateTo]);
+  }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  /* ---- expenses: server-driven pagination + category/date filters.
+     Only used for the initial load and for page/filter navigation —
+     never called again just because a single expense was added/edited/deleted. ---- */
+
+  const loadExpenses = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoadingExpenses(true);
+      try {
+        const params: Record<string, string | number> = {
+          page: currentPage,
+          limit: PAGE_LIMIT,
+        };
+        if (categoryFilter !== "All") params.categoryId = categoryFilter;
+        if (dateFrom && dateTo) {
+          params.startDate = dateFrom;
+          params.endDate = dateTo;
+        }
+
+        const res = await api.get("/api/expenses", { params });
+        const tagged: DisplayExpense[] = res.data.expenses.map(
+          (e: ApiExpense) => ({
+            ...e,
+            source: "manual" as const,
+          }),
+        );
+        setExpenses(tagged);
+        setPagination(res.data.pagination);
+      } catch {
+        setLoadError("Failed to load expenses.");
+      } finally {
+        if (!opts?.silent) setLoadingExpenses(false);
+      }
+    },
+    [currentPage, categoryFilter, dateFrom, dateTo],
+  );
 
   useEffect(() => {
     loadExpenses();
@@ -212,34 +273,16 @@ export default function ExpensesPage() {
 
   /* ---- client-side text filter, applied only to the already-loaded page ---- */
 
-  const visibleExpenses = useMemo(() => {
-    if (!search) return expenses;
-    const q = search.toLowerCase();
-    return expenses.filter(
-      (e) =>
-        (e.description ?? "").toLowerCase().includes(q) ||
-        (e.category?.name ?? "").toLowerCase().includes(q) ||
-        (e.note ?? "").toLowerCase().includes(q),
-    );
-  }, [expenses, search]);
-
-  // Total spend for the current page only — a true global sum would need a
-  // separate backend aggregate query across all pages/filters.
-  const stats = useMemo(() => {
-    const isInventory = (e: DisplayExpense) => e.category?.name === "Inventory";
-
-    const manual = visibleExpenses.filter((e) => !isInventory(e));
-    const inventory = visibleExpenses.filter((e) => isInventory(e));
-
-    return {
-      totalExpenses: pagination.total,
-      pageSpend: visibleExpenses.reduce((s, e) => s + Number(e.amount), 0),
-      manualCount: manual.length,
-      manualSpend: manual.reduce((s, e) => s + Number(e.amount), 0),
-      inventoryCount: inventory.length,
-      inventorySpend: inventory.reduce((s, e) => s + Number(e.amount), 0),
-    };
-  }, [pagination.total, visibleExpenses]);
+  const visibleExpenses = search
+    ? expenses.filter((e) => {
+        const q = search.toLowerCase();
+        return (
+          (e.description ?? "").toLowerCase().includes(q) ||
+          (e.category?.name ?? "").toLowerCase().includes(q) ||
+          (e.note ?? "").toLowerCase().includes(q)
+        );
+      })
+    : expenses;
 
   /* ---- categories: create/delete ---- */
 
@@ -340,6 +383,43 @@ export default function ExpensesPage() {
     setIsModalOpen(true);
   }
 
+  // Applies a created/updated/deleted expense to `stats` directly — no
+  // network call, no refetch of the 100-row batch.
+  function applyStatsDelta(
+    prev: ApiExpense | null, // the expense's state before the change, or null if new
+    next: ApiExpense | null, // the expense's state after the change, or null if deleted
+  ) {
+    setStats((s) => {
+      let { totalCount, totalAmount, manualCount, manualAmount, inventoryCount, inventoryAmount } = s;
+
+      if (prev) {
+        totalCount -= 1;
+        totalAmount -= Number(prev.amount);
+        if (isInventoryExpense(prev)) {
+          inventoryCount -= 1;
+          inventoryAmount -= Number(prev.amount);
+        } else {
+          manualCount -= 1;
+          manualAmount -= Number(prev.amount);
+        }
+      }
+
+      if (next) {
+        totalCount += 1;
+        totalAmount += Number(next.amount);
+        if (isInventoryExpense(next)) {
+          inventoryCount += 1;
+          inventoryAmount += Number(next.amount);
+        } else {
+          manualCount += 1;
+          manualAmount += Number(next.amount);
+        }
+      }
+
+      return { totalCount, totalAmount, manualCount, manualAmount, inventoryCount, inventoryAmount };
+    });
+  }
+
   async function handleSaveExpense() {
     setErrorMsg(null);
 
@@ -364,14 +444,49 @@ export default function ExpensesPage() {
     setSaving(true);
     try {
       if (editingExpense) {
-        await api.patch(`/api/expenses/${editingExpense.id}`, payload);
+        const res = await api.patch(`/api/expenses/${editingExpense.id}`, payload);
+        const updated: ApiExpense = res.data.expense;
+
+        applyStatsDelta(editingExpense, updated);
+
+        // Only splice into the visible list if it's still present there —
+        // if it no longer matches the active category/date filter, drop it
+        // from view rather than showing a row that shouldn't be on this page.
+        setExpenses((prev) => {
+          const stillMatchesFilter =
+            (categoryFilter === "All" || updated.categoryId === categoryFilter) &&
+            (!dateFrom || !dateTo || (updated.expenseDate >= dateFrom && updated.expenseDate <= dateTo));
+
+          if (!stillMatchesFilter) {
+            return prev.filter((e) => e.id !== updated.id);
+          }
+          return prev.map((e) =>
+            e.id === updated.id ? { ...updated, source: "manual" as const } : e,
+          );
+        });
       } else {
-        await api.post("/api/expenses", payload);
-        setCurrentPage(1);
+        const res = await api.post("/api/expenses", payload);
+        const created: ApiExpense = res.data.expense;
+
+        applyStatsDelta(null, created);
+
+        // Only prepend to the visible list when we're on page 1 with no
+        // active filters that would exclude it — otherwise the new row
+        // genuinely isn't part of the currently-viewed page.
+        const belongsOnCurrentView =
+          currentPage === 1 &&
+          (categoryFilter === "All" || created.categoryId === categoryFilter) &&
+          (!dateFrom || !dateTo || (created.expenseDate >= dateFrom && created.expenseDate <= dateTo));
+
+        if (belongsOnCurrentView) {
+          setExpenses((prev) => [{ ...created, source: "manual" as const }, ...prev].slice(0, PAGE_LIMIT));
+          setPagination((p) => ({ ...p, total: p.total + 1, totalPages: Math.ceil((p.total + 1) / PAGE_LIMIT) }));
+        } else {
+          setPagination((p) => ({ ...p, total: p.total + 1, totalPages: Math.ceil((p.total + 1) / PAGE_LIMIT) }));
+        }
       }
       resetForm();
       setIsModalOpen(false);
-      await loadExpenses();
     } catch {
       setErrorMsg("Failed to save expense. Please try again.");
     } finally {
@@ -384,8 +499,22 @@ export default function ExpensesPage() {
     setDeleting(true);
     try {
       await api.delete(`/api/expenses/${deleteTarget.id}`);
+
+      applyStatsDelta(deleteTarget, null);
+      setExpenses((prev) => prev.filter((e) => e.id !== deleteTarget.id));
+      setPagination((p) => {
+        const newTotal = Math.max(0, p.total - 1);
+        return { ...p, total: newTotal, totalPages: Math.max(1, Math.ceil(newTotal / PAGE_LIMIT)) };
+      });
+
+      // If deleting emptied the current page (and it's not page 1), silently
+      // step back one page — this is the one case that still needs a fetch,
+      // since we don't have the previous page's rows in memory.
+      if (expenses.length === 1 && currentPage > 1) {
+        setCurrentPage((p) => p - 1);
+      }
+
       setDeleteTarget(null);
-      await loadExpenses();
     } catch {
       setLoadError("Failed to delete expense.");
       setDeleteTarget(null);
@@ -422,7 +551,8 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {/* Stats */}
+      {/* Stats — fixed whole-dataset totals, updated incrementally, never
+          via a full refetch after a create/edit/delete */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-slate-200 border-l-4 border-l-slate-400 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
           <div>
@@ -430,7 +560,7 @@ export default function ExpensesPage() {
               Total Expenses
             </p>
             <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
-              <AnimatedStatValue value={stats.totalExpenses} />
+              <AnimatedStatValue value={stats.totalCount} />
             </p>
           </div>
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-600 sm:h-12 sm:w-12">
@@ -445,7 +575,7 @@ export default function ExpensesPage() {
             </p>
             <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
               <AnimatedStatValue
-                value={stats.pageSpend}
+                value={stats.totalAmount}
                 format={formatCurrency}
               />
             </p>
@@ -458,11 +588,11 @@ export default function ExpensesPage() {
         <div className="rounded-xl border border-slate-200 border-l-4 border-l-[#044d73] bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
           <div>
             <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Manual send
+              Manual Spend
             </p>
             <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
               <AnimatedStatValue
-                value={stats.manualSpend}
+                value={stats.manualAmount}
                 format={formatCurrency}
               />
             </p>
@@ -482,7 +612,7 @@ export default function ExpensesPage() {
             </p>
             <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
               <AnimatedStatValue
-                value={stats.inventorySpend}
+                value={stats.inventoryAmount}
                 format={formatCurrency}
               />
             </p>

@@ -43,3 +43,5 @@ export const purchasePaymentTypeEnum = pgEnum("purchase_payment_type", [
   "CHEQUE",
   "MOBILE_PAYMENT",
 ]);
+
+export const roundingDirectionEnum = pgEnum("rounding_direction", ["UP", "DOWN"]);

@@ -1,23 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-    ChevronLeft, ChevronRight, LogOut, Menu, X,
+    ChevronLeft, ChevronRight, ChevronDown, LogOut, Menu, X,
     LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Contact,
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
-type IconKey = 'dashboard' | 'inventory' | 'purchase' | 'sales' | 'customers' | 'suppliers' | 'expense' | 'analytics' | 'settings';
 
-type NavItem = {
-    match: string;
-    href: string;
-    label: string;
-    icon: IconKey;
-    children?: { href: string; label: string }[];
-};
+type IconKey = 'dashboard' | 'inventory' | 'purchase' | 'sales' | 'customers' | 'suppliers' | 'expense' | 'analytics' | 'settings';
 
 const iconMap: Record<IconKey, LucideIcon> = {
     dashboard: LayoutDashboard,
@@ -31,22 +24,70 @@ const iconMap: Record<IconKey, LucideIcon> = {
     settings: Settings,
 };
 
-const defaultItems: NavItem[] = [
-    { match: '/pharma', href: '/pharma', label: 'Dashboard', icon: 'dashboard' },
-    { match: '/pharma/inventory', href: '/pharma/inventory', label: 'Inventory', icon: 'inventory' },
-    { match: '/pharma/purchase', href: '/pharma/purchase', label: 'Purchase', icon: 'purchase' },
-    { match: '/pharma/sales', href: '/pharma/sales', label: 'Sales', icon: 'sales' },
-    { match: '/pharma/customers', href: '/pharma/customers', label: 'Customers', icon: 'customers' },
-    { match: '/pharma/suppliers', href: '/pharma/suppliers', label: 'Suppliers', icon: 'suppliers' },
-    { match: '/pharma/expense', href: '/pharma/expense', label: 'Expense', icon: 'expense' },
-    { match: '/pharma/analytics', href: '/pharma/analytics', label: 'Analytics', icon: 'analytics' },
-    { match: '/pharma/settings', href: '/pharma/settings', label: 'Settings', icon: 'settings' },
+/* A single navigable link. */
+type NavItem = {
+    match: string;
+    href: string;
+    label: string;
+    icon: IconKey;
+};
+
+/* A collapsible section grouping several links under one header. */
+type NavGroup = {
+    id: string;
+    label: string;
+    icon: IconKey;
+    items: NavItem[];
+};
+
+type NavEntry = { type: 'item'; item: NavItem } | { type: 'group'; group: NavGroup };
+
+const defaultEntries: NavEntry[] = [
+    { type: 'item', item: { match: '/pharma', href: '/pharma', label: 'Dashboard', icon: 'dashboard' } },
+    {
+        type: 'group',
+        group: {
+            id: 'operations',
+            label: 'Operations',
+            icon: 'inventory',
+            items: [
+                { match: '/pharma/inventory', href: '/pharma/inventory', label: 'Inventory', icon: 'inventory' },
+                { match: '/pharma/purchase', href: '/pharma/purchase', label: 'Purchase', icon: 'purchase' },
+                { match: '/pharma/sales', href: '/pharma/sales', label: 'Sales', icon: 'sales' },
+            ],
+        },
+    },
+    {
+        type: 'group',
+        group: {
+            id: 'contacts',
+            label: 'Contacts',
+            icon: 'suppliers',
+            items: [
+                { match: '/pharma/customers', href: '/pharma/customers', label: 'Customers', icon: 'customers' },
+                { match: '/pharma/suppliers', href: '/pharma/suppliers', label: 'Suppliers', icon: 'suppliers' },
+            ],
+        },
+    },
+    {
+        type: 'group',
+        group: {
+            id: 'finance',
+            label: 'Finance',
+            icon: 'expense',
+            items: [
+                { match: '/pharma/expense', href: '/pharma/expense', label: 'Expense', icon: 'expense' },
+                { match: '/pharma/analytics', href: '/pharma/analytics', label: 'Analytics', icon: 'analytics' },
+            ],
+        },
+    },
+    { type: 'item', item: { match: '/pharma/settings', href: '/pharma/settings', label: 'Settings', icon: 'settings' } },
 ];
 
 type SidebarUser = { name: string; email?: string };
 
 type SidebarProps = {
-    items?: NavItem[];
+    entries?: NavEntry[];
     brandName: string;
     logoUrl?: string;
     user: SidebarUser;
@@ -58,14 +99,16 @@ function Brand({
     brandName,
     logoUrl,
     collapsed,
+    onToggleCollapse,
 }: {
     brandName: string;
     logoUrl?: string;
     collapsed: boolean;
+    onToggleCollapse: () => void;
 }) {
     return (
-        <div className={`flex items-center pt-7 pb-5 ${collapsed ? 'justify-center' : 'gap-3.5 px-5'}`}>
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
+        <div className={`flex items-center pt-6 pb-5 ${collapsed ? 'flex-col gap-2 px-3' : 'gap-3 px-4'}`}>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
                 {logoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={logoUrl} alt={brandName} className="h-full w-full object-cover" />
@@ -76,70 +119,148 @@ function Brand({
                 )}
             </div>
             {!collapsed && (
-                <span className="truncate text-base font-bold text-white">{brandName}</span>
+                <span className="flex-1 truncate text-base font-bold text-white">{brandName}</span>
             )}
+            <button
+                onClick={onToggleCollapse}
+                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            >
+                {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+            </button>
         </div>
     );
 }
 
+function NavLink({
+    item,
+    collapsed,
+    indent,
+    onNavigate,
+    isActive,
+}: {
+    item: NavItem;
+    collapsed: boolean;
+    indent?: boolean;
+    onNavigate?: () => void;
+    isActive: boolean;
+}) {
+    const Icon = iconMap[item.icon];
+    return (
+        <Link
+            href={item.href}
+            onClick={onNavigate}
+            title={collapsed ? item.label : undefined}
+            aria-current={isActive ? 'page' : undefined}
+            className={`flex items-center gap-3 rounded-full py-3 text-sm font-semibold transition-all ${collapsed ? 'justify-center px-0' : indent ? 'pl-10 pr-4' : 'px-4'
+                } ${isActive
+                    ? 'bg-white text-[#044d73] shadow-md'
+                    : 'text-white/80 hover:bg-white/10 hover:text-white'
+                }`}
+        >
+            <Icon size={19} className="shrink-0" />
+            {!collapsed && <span className="truncate">{item.label}</span>}
+        </Link>
+    );
+}
+
+function GroupHeader({
+    group,
+    open,
+    onToggle,
+    active,
+}: {
+    group: NavGroup;
+    open: boolean;
+    onToggle: () => void;
+    active: boolean;
+}) {
+    const Icon = iconMap[group.icon];
+    return (
+        <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            className={`flex w-full items-center gap-3 rounded-full px-4 py-3 text-sm font-semibold transition-all ${active && !open ? 'text-white' : 'text-white/70'
+                } hover:bg-white/10 hover:text-white`}
+        >
+            <Icon size={19} className="shrink-0" />
+            <span className="flex-1 truncate text-left">{group.label}</span>
+            <ChevronDown size={15} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+    );
+}
+
 function NavList({
-    items,
+    entries,
     collapsed,
     onNavigate,
 }: {
-    items: NavItem[];
+    entries: NavEntry[];
     collapsed: boolean;
     onNavigate?: () => void;
 }) {
     const pathname = usePathname();
-    const isUnder = (path: string, hasChildren?: boolean) =>
-        pathname === path || (hasChildren && pathname.startsWith(path + '/'));
+    const isActive = (path: string) => pathname === path;
+    const groupContainsActive = (group: NavGroup) => group.items.some((i) => isActive(i.match));
+
+    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+        const initial: Record<string, boolean> = {};
+        entries.forEach((e) => {
+            if (e.type === 'group') initial[e.group.id] = groupContainsActive(e.group);
+        });
+        return initial;
+    });
+
+    function toggleGroup(id: string) {
+        setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+    }
+
+    // Collapsed sidebar: no room for group headers/labels, so show every
+    // link flattened as a plain icon column.
+    if (collapsed) {
+        return (
+            <nav aria-label="Main" className="flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
+                {entries.flatMap((e) => (e.type === 'item' ? [e.item] : e.group.items)).map((item) => (
+                    <NavLink key={item.match} item={item} collapsed onNavigate={onNavigate} isActive={isActive(item.match)} />
+                ))}
+            </nav>
+        );
+    }
 
     return (
-        <nav aria-label="Main" className="flex-1 space-y-2 overflow-y-auto px-3 py-2">
-            {items.map((item) => {
-                const active = isUnder(item.match, !!item.children);
-                const Icon = iconMap[item.icon];
+        <nav aria-label="Main" className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+            {entries.map((entry) => {
+                if (entry.type === 'item') {
+                    return (
+                        <NavLink
+                            key={entry.item.match}
+                            item={entry.item}
+                            collapsed={false}
+                            onNavigate={onNavigate}
+                            isActive={isActive(entry.item.match)}
+                        />
+                    );
+                }
 
+                const { group } = entry;
+                const open = !!openGroups[group.id];
                 return (
-                    <div key={item.match}>
-                        <Link
-                            href={item.href}
-                            onClick={onNavigate}
-                            title={collapsed ? item.label : undefined}
-                            aria-current={active && !item.children ? 'page' : undefined}
-                            className={`flex items-center gap-3.5 rounded-full py-3.5 text-sm font-semibold transition-all ${collapsed ? 'justify-center' : 'px-4'
-                                } ${active
-                                    ? 'bg-white text-[#044d73] shadow-md'
-                                    : 'text-white/80 hover:bg-white/10 hover:text-white'
-                                }`}
-                        >
-                            <Icon size={20} className="shrink-0" />
-                            {!collapsed && <span className="truncate">{item.label}</span>}
-                        </Link>
-
-                        {/* sub-pages, only while the parent section is open */}
-                        {active && !collapsed && item.children && (
-                            <ul className="ml-[1.65rem] mt-1.5 space-y-1 border-l border-white/15 pl-3">
-                                {item.children.map((child) => {
-                                    const childActive = isUnder(child.href);
-                                    return (
-                                        <li key={child.href}>
-                                            <Link
-                                                href={child.href}
-                                                onClick={onNavigate}
-                                                aria-current={childActive ? 'page' : undefined}
-                                                className={`block rounded-full px-3 py-2 text-[13px] font-semibold transition-colors ${childActive
-                                                    ? 'bg-white/15 text-white'
-                                                    : 'text-white/70 hover:bg-white/10 hover:text-white'
-                                                    }`}
-                                            >
-                                                {child.label}
-                                            </Link>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
+                    <div key={group.id}>
+                        <GroupHeader group={group} open={open} onToggle={() => toggleGroup(group.id)} active={groupContainsActive(group)} />
+                        {open && (
+                            <div className="mt-1 space-y-1">
+                                {group.items.map((item) => (
+                                    <NavLink
+                                        key={item.match}
+                                        item={item}
+                                        collapsed={false}
+                                        indent
+                                        onNavigate={onNavigate}
+                                        isActive={isActive(item.match)}
+                                    />
+                                ))}
+                            </div>
                         )}
                     </div>
                 );
@@ -200,7 +321,7 @@ function UserFooter({
 
 /* ----------------------------- sidebar ----------------------------- */
 
-export function Sidebar({ items = defaultItems, brandName, logoUrl, user }: SidebarProps) {
+export function Sidebar({ entries = defaultEntries, brandName, logoUrl, user }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
     const { logout } = useAuth();
@@ -220,16 +341,8 @@ export function Sidebar({ items = defaultItems, brandName, logoUrl, user }: Side
                 className={`sticky top-3 m-3 hidden h-[calc(100dvh-1.5rem)] shrink-0 self-start flex-col rounded-3xl bg-[#044d73] shadow-sm transition-[width] duration-300 md:flex ${collapsed ? 'w-20' : 'w-64'
                     }`}
             >
-                <button
-                    onClick={() => setCollapsed(!collapsed)}
-                    className="absolute -right-3.5 top-8 z-20 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-[#044d73] text-white shadow-sm transition-all hover:bg-white/10"
-                    aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                >
-                    {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-                </button>
-
-                <Brand brandName={brandName} logoUrl={logoUrl} collapsed={collapsed} />
-                <NavList items={items} collapsed={collapsed} />
+                <Brand brandName={brandName} logoUrl={logoUrl} collapsed={collapsed} onToggleCollapse={() => setCollapsed((c) => !c)} />
+                <NavList entries={entries} collapsed={collapsed} />
                 <UserFooter user={user} collapsed={collapsed} onLogout={handleLogout} />
             </aside>
 
@@ -267,8 +380,18 @@ export function Sidebar({ items = defaultItems, brandName, logoUrl, user }: Side
                         >
                             <X size={18} />
                         </button>
-                        <Brand brandName={brandName} logoUrl={logoUrl} collapsed={false} />
-                        <NavList items={items} collapsed={false} onNavigate={() => setMobileOpen(false)} />
+                        <div className="flex items-center gap-3 pt-6 pb-5 px-4">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
+                                {logoUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={logoUrl} alt={brandName} className="h-full w-full object-cover" />
+                                ) : (
+                                    <span className="text-lg font-bold text-[#044d73]">{brandName.charAt(0).toUpperCase()}</span>
+                                )}
+                            </div>
+                            <span className="truncate text-base font-bold text-white">{brandName}</span>
+                        </div>
+                        <NavList entries={entries} collapsed={false} onNavigate={() => setMobileOpen(false)} />
                         <UserFooter user={user} collapsed={false} onLogout={handleLogout} />
                     </aside>
                 </div>

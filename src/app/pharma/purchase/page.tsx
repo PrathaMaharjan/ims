@@ -49,6 +49,7 @@ interface BatchDetails {
   expDate: string;
   mrp: Num;
   salePrice: Num;
+  note?: string;
 }
 
 interface LineItemForm {
@@ -113,7 +114,7 @@ interface PurchaseRecord {
 /* ------------------------------------------------------------------ */
 
 function emptyBatch(qty: Num = ""): BatchDetails {
-  return { batchNo: "", qty, mfgDate: "", expDate: "", mrp: "", salePrice: "" };
+  return { batchNo: "", qty, mfgDate: "", expDate: "", mrp: "", salePrice: "", note: "" };
 }
 
 function emptyLine(): LineItemForm {
@@ -812,22 +813,34 @@ export default function PurchasePage() {
         </div>
 
         {pagination.total > 0 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
+          <div className="flex flex-col gap-4 items-center justify-between border-t border-slate-100 bg-white px-6 py-4 sm:flex-row">
             <span className="text-xs text-slate-400">
-              Page {currentPage} of {totalPages} · {pagination.total} total purchase{pagination.total !== 1 ? "s" : ""}
+              Showing {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, pagination.total)}–{Math.min(currentPage * ITEMS_PER_PAGE, pagination.total)} of {pagination.total} purchase{pagination.total !== 1 ? "s" : ""}
             </span>
-            {totalPages > 1 && (
-              <div className="flex items-center gap-1">
-                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-30">
-                  <ChevronLeft className="w-4 h-4" />
+
+            <div className="flex items-center justify-between w-full sm:w-auto gap-6">
+              <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                Page {currentPage} of {pagination.totalPages}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors touch-manipulation"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="h-5 w-5" />
                 </button>
-                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-30">
-                  <ChevronRight className="w-4 h-4" />
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(p + 1, pagination.totalPages))}
+                  disabled={currentPage === pagination.totalPages}
+                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors touch-manipulation"
+                  title="Next Page"
+                >
+                  <ChevronRight className="h-5 w-5" />
                 </button>
               </div>
-            )}
+            </div>
           </div>
         )}
       </div>
@@ -1241,6 +1254,17 @@ export default function PurchasePage() {
                                               onChange={e => updateLineBatch(line.id, { salePrice: e.target.value === "" ? "" : Number(e.target.value) })}
                                               className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[#044d73] focus:outline-none" />
                                           </div>
+                                        </div>
+
+                                        <div>
+                                          <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Batch Note / Remarks</label>
+                                          <input
+                                            type="text"
+                                            placeholder="e.g. Storage instructions, damage notes, special batch remarks..."
+                                            value={line.batch?.note || ""}
+                                            onChange={e => updateLineBatch(line.id, { note: e.target.value })}
+                                            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[#044d73] focus:outline-none"
+                                          />
                                         </div>
 
                                         <div className="flex items-center justify-end pt-1 border-t border-slate-100">

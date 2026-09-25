@@ -220,7 +220,7 @@ function NavList({
     // link flattened as a plain icon column.
     if (collapsed) {
         return (
-            <nav aria-label="Main" className="flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
+            <nav aria-label="Main" className="flex-1 space-y-1.5 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-2">
                 {entries.flatMap((e) => (e.type === 'item' ? [e.item] : e.group.items)).map((item) => (
                     <NavLink key={item.match} item={item} collapsed onNavigate={onNavigate} isActive={isActive(item.match)} />
                 ))}
@@ -229,7 +229,7 @@ function NavList({
     }
 
     return (
-        <nav aria-label="Main" className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+        <nav aria-label="Main" className="flex-1 space-y-1 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-2">
             {entries.map((entry) => {
                 if (entry.type === 'item') {
                     return (

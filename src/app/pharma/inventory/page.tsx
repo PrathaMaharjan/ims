@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, Fragment } from "react";
 import {
   Plus, X, Pencil, Trash2, Search,
   Package, PackageCheck, PackageX, AlertTriangle,
-  ChevronLeft, ChevronRight, Check, Boxes, ListFilter,
+  ChevronLeft, ChevronRight, Check, Boxes, ListFilter, FileText,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
@@ -29,6 +29,9 @@ export interface ApiBatch {
   quantityAvailable: number;
   status: "ACTIVE" | "NEAR_EXPIRY" | "EXPIRED" | "RECALLED" | "QUARANTINED" | "DEPLETED";
   supplier?: { id: string; name: string } | null;
+  note?: string | null;
+  notes?: string | null;
+  remarks?: string | null;
 }
 
 interface ItemForm {
@@ -363,6 +366,13 @@ export default function InventoryPage() {
   const [viewingBatches, setViewingBatches] = useState<ApiBatch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [batchesError, setBatchesError] = useState<string | null>(null);
+  const [expandedBatchIds, setExpandedBatchIds] = useState<string[]>([]);
+
+  function toggleBatchExpand(id: string) {
+    setExpandedBatchIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -546,6 +556,7 @@ export default function InventoryPage() {
   async function openView(item: Item) {
     setViewingItem(item);
     setViewingBatches([]);
+    setExpandedBatchIds([]);
     setBatchesError(null);
     setLoadingBatches(true);
     try {
@@ -891,7 +902,7 @@ export default function InventoryPage() {
                       <Boxes className="w-4 h-4" /> Added Batches & Stock per Batch
                     </h4>
                     <span className="text-xs text-slate-400">
-                      Stock lives on batches and is updated upon purchase & sale
+                      Click on a batch to view notes & remarks
                     </span>
                   </div>
 
@@ -930,28 +941,57 @@ export default function InventoryPage() {
                         <tbody className="divide-y divide-slate-100">
                           {viewingBatches.map(b => {
                             const expStatus = getBatchExpiryStatus(b.expiryDate);
+                            const isExpanded = expandedBatchIds.includes(b.id);
                             return (
-                              <tr key={b.id} className="hover:bg-slate-50/60 transition-colors">
-                                <td className="py-3 px-3">
-                                  <span className="inline-flex items-center gap-1 font-bold text-slate-800 bg-[#044d73]/10 text-[#044d73] px-2 py-0.5 rounded border border-[#044d73]/20">
-                                    <Boxes className="w-3 h-3" /> {b.batchNumber}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-3 font-bold text-slate-900 text-sm">
-                                  {b.quantityAvailable} <span className="text-xs font-normal text-slate-500">{viewingItem.unit}</span>
-                                </td>
-                                <td className="py-3 px-3 font-medium text-slate-700">{b.expiryDate}</td>
-                                <td className="py-3 px-3 text-slate-500">{b.manufacturingDate || "—"}</td>
-                                <td className="py-3 px-3 text-slate-600">{rs(Number(b.purchasePrice))}</td>
-                                <td className="py-3 px-3 text-slate-600">{rs(Number(b.mrp))}</td>
-                                <td className="py-3 px-3 font-semibold text-slate-700">{b.salePrice ? rs(Number(b.salePrice)) : "—"}</td>
-                                <td className="py-3 px-3 text-slate-500">{b.supplier?.name || "—"}</td>
-                                <td className="py-3 px-3">
-                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${expStatus.cls}`}>
-                                    {expStatus.label}
-                                  </span>
-                                </td>
-                              </tr>
+                              <Fragment key={b.id}>
+                                <tr
+                                  onClick={() => toggleBatchExpand(b.id)}
+                                  title="Click to view batch notes"
+                                  className="group cursor-pointer hover:bg-slate-50/80 transition-colors"
+                                >
+                                  <td className="py-3 px-3">
+                                    <span className="inline-flex items-center gap-1 font-bold text-slate-800 bg-[#044d73]/10 text-[#044d73] px-2 py-0.5 rounded border border-[#044d73]/20 group-hover:bg-[#044d73]/20 transition-colors">
+                                      <Boxes className="w-3 h-3" /> {b.batchNumber}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 font-bold text-slate-900 text-sm">
+                                    {b.quantityAvailable} <span className="text-xs font-normal text-slate-500">{viewingItem.unit}</span>
+                                  </td>
+                                  <td className="py-3 px-3 font-medium text-slate-700">{b.expiryDate}</td>
+                                  <td className="py-3 px-3 text-slate-500">{b.manufacturingDate || "—"}</td>
+                                  <td className="py-3 px-3 text-slate-600">{rs(Number(b.purchasePrice))}</td>
+                                  <td className="py-3 px-3 text-slate-600">{rs(Number(b.mrp))}</td>
+                                  <td className="py-3 px-3 font-semibold text-slate-700">{b.salePrice ? rs(Number(b.salePrice)) : "—"}</td>
+                                  <td className="py-3 px-3 text-slate-500">{b.supplier?.name || "—"}</td>
+                                  <td className="py-3 px-3">
+                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${expStatus.cls}`}>
+                                      {expStatus.label}
+                                    </span>
+                                  </td>
+                                </tr>
+
+                                {isExpanded && (
+                                  <tr className="bg-slate-50/60 border-b border-slate-100 animate-in fade-in duration-150">
+                                    <td colSpan={9} className="py-3 px-6 pl-10">
+                                      <div className="flex items-start gap-3 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
+                                        <FileText className="h-4 w-4 text-[#044d73] shrink-0 mt-0.5" />
+                                        <div className="space-y-1 min-w-0">
+                                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                            Batch Note & Remarks
+                                          </span>
+                                          <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                            {b.note || b.notes || b.remarks || (
+                                              <span className="italic text-slate-400">
+                                                No notes recorded for this batch.
+                                              </span>
+                                            )}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
                             );
                           })}
                         </tbody>

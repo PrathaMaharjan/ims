@@ -1,8 +1,18 @@
-import { CreatePurchaseInput, UpdatePurchaseInput } from "@/lib/validation/purchases";
+import {
+  CreatePurchaseInput,
+  UpdatePurchaseInput,
+} from "@/lib/validation/purchases";
 import { db } from "../../db";
-import { purchases, purchaseItems, batches, products } from "../../db/schema";
+import {
+  purchases,
+  purchaseItems,
+  batches,
+  products,
+  expenses,
+} from "../../db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { invalidateCache } from "@/lib/cache";
+import { getOrCreateInventoryCategory } from "../expenses/category";
 
 export interface PurchaseTotals {
   subtotal: number;
@@ -58,6 +68,177 @@ export function calculatePurchaseTotals(
   return { subtotal, vatAmount, grandTotal, lineTotals };
 }
 
+async function buildPurchaseExpenseText(
+  input: CreatePurchaseInput,
+): Promise<{ description: string; note: string }> {
+  const productIds = [...new Set(input.items.map((item) => item.productId))];
+
+  const productRows = await db
+    .select({ id: products.id, name: products.name })
+    .from(products)
+    .where(inArray(products.id, productIds));
+
+  const nameById = new Map(productRows.map((p) => [p.id, p.name]));
+
+  const lineDescriptions = input.items.map((item) => {
+    const name = nameById.get(item.productId) ?? "Unknown item";
+    const lineTotal = (item.batch.quantity * item.purchaseRate).toFixed(2);
+    return `${name} — Rs. ${item.purchaseRate.toFixed(2)}/unit × ${item.batch.quantity} = Rs. ${lineTotal}`;
+  });
+  const itemNames = input.items.map(
+    (item) => nameById.get(item.productId) ?? "Unknown item",
+  );
+  const uniqueNames = [...new Set(itemNames)];
+  const shortNames =
+    uniqueNames.length > 3
+      ? `${uniqueNames.slice(0, 3).join(", ")} +${uniqueNames.length - 3} more`
+      : uniqueNames.join(", ");
+
+  const description = `Purchase${input.supplierInvoiceNumber ? ` (Invoice ${input.supplierInvoiceNumber})` : ""} — ${shortNames}`;
+
+  const note = lineDescriptions.join("\n");
+
+  return { description, note };
+}
+
+// export async function createPurchase(
+//   organizationId: string,
+//   userId: string,
+//   input: CreatePurchaseInput,
+// ) {
+//   const totals = calculatePurchaseTotals(input);
+
+//   // 1. Create the purchase header first — items/batches need its id.
+//   const [purchase] = await db
+//     .insert(purchases)
+//     .values({
+//       organizationId,
+//       supplierId: input.supplierId,
+//       supplierInvoiceNumber: input.supplierInvoiceNumber,
+//       purchaseDate: input.purchaseDate,
+//       purcType: input.purcType,
+//       paymentType: input.paymentType, // new
+//       subtotal: totals.subtotal.toFixed(2),
+//       discount: input.discount.toFixed(2),
+//       freightCharges: input.freightCharges.toFixed(2),
+//       vatAmount: totals.vatAmount.toFixed(2),
+//       vatRefund: input.vatRefund.toFixed(2),
+//       grandTotal: totals.grandTotal.toFixed(2),
+//       createdByUserId: userId,
+//     })
+//     .returning({ id: purchases.id });
+
+//   if (!purchase) {
+//     throw new Error("Failed to create purchase");
+//   }
+
+//   try {
+//     // 2. Insert all purchase_items in one batched call (not a loop of inserts).
+//     const insertedItems = await db
+//       .insert(purchaseItems)
+//       .values(
+//         input.items.map((item, i) => ({
+//           purchaseId: purchase.id,
+//           productId: item.productId,
+//           batchNumber: item.batch.batchNumber,
+//           manufacturingDate: item.batch.manufacturingDate,
+//           expiryDate: item.batch.expiryDate,
+//           quantity: item.batch.quantity,
+//           purchaseRate: item.purchaseRate.toFixed(2),
+//           mrp: (item.batch.mrp ?? 0).toFixed(2),
+//           vatApplicable: item.vatApplicable,
+//           lineTotal: totals.lineTotals[i].toFixed(2),
+//         })),
+//       )
+//       .returning({ id: purchaseItems.id });
+
+//     // 3. One batch per purchase item — 1:1, as designed.
+//     const insertedBatches = await db
+//       .insert(batches)
+//       .values(
+//         input.items.map((item) => ({
+//           organizationId,
+//           productId: item.productId,
+//           supplierId: item.batch.supplierId ?? input.supplierId,
+//           batchNumber: item.batch.batchNumber,
+//           manufacturingDate: item.batch.manufacturingDate,
+//           expiryDate: item.batch.expiryDate,
+//           purchasePrice: item.purchaseRate.toFixed(2),
+//           mrp: (item.batch.mrp ?? 0).toFixed(2),
+//           salePrice:
+//             item.batch.salePrice !== undefined
+//               ? item.batch.salePrice.toFixed(2)
+//               : null,
+//           quantityReceived: item.batch.quantity,
+//           quantityAvailable: item.batch.quantity,
+//           status: "ACTIVE" as const,
+//         })),
+//       )
+//       .returning({ id: batches.id });
+
+//     // 4. Link each purchase_item back to the batch it created.
+//     await Promise.all(
+//       insertedItems.map((pi, i) =>
+//         db
+//           .update(purchaseItems)
+//           .set({ batchId: insertedBatches[i].id })
+//           .where(eq(purchaseItems.id, pi.id)),
+//       ),
+//     );
+
+//     // 5. Increase stockQuantity per product — sum quantities per productId
+//     // first, since one purchase can have multiple lines for the same product
+//     // (different batches), and we want one UPDATE per product, not one per line.
+//     const quantityByProduct = new Map<string, number>();
+//     for (const item of input.items) {
+//       quantityByProduct.set(
+//         item.productId,
+//         (quantityByProduct.get(item.productId) ?? 0) + item.batch.quantity,
+//       );
+//     }
+
+//     await Promise.all(
+//       Array.from(quantityByProduct.entries()).map(([productId, qty]) =>
+//         db
+//           .update(products)
+//           .set({
+//             stockQuantity: sql`${products.stockQuantity} + ${qty}`,
+//             updatedAt: new Date(),
+//           })
+//           .where(eq(products.id, productId)),
+//       ),
+//     );
+//     //6 insert into expenses
+
+//     const { description, note } = buildPurchaseExpenseText(input, productRows);
+
+//     // . Write the linked "Inventory" expense row.
+//     await db.insert(expenses).values({
+//       organizationId,
+//       categoryId: inventoryCategory.id,
+//       description,
+//       note,
+//       amount: totals.grandTotal.toFixed(2),
+//       expenseDate: input.purchaseDate,
+//       createdByUserId: userId,
+//     });
+
+//     // 7. Invalidate caches for everything this purchase just changed.
+//     await Promise.all([
+//       invalidateCache(`products:list:${organizationId}`),
+//       ...Array.from(quantityByProduct.keys()).map((productId) =>
+//         invalidateCache(`products:one:${organizationId}:${productId}`),
+//       ),
+//     ]);
+
+//     return { purchaseId: purchase.id, totals };
+//   } catch (error) {
+//     await db.delete(purchases).where(eq(purchases.id, purchase.id));
+//     throw error;
+//   }
+// }
+
+// delete a purchase and all its items, batches, and stockQuantity changes
 export async function createPurchase(
   organizationId: string,
   userId: string,
@@ -66,49 +247,55 @@ export async function createPurchase(
   const totals = calculatePurchaseTotals(input);
 
   // 1. Create the purchase header first — items/batches need its id.
-const [purchase] = await db
-  .insert(purchases)
-  .values({
-    organizationId,
-    supplierId: input.supplierId,
-    supplierInvoiceNumber: input.supplierInvoiceNumber,
-    purchaseDate: input.purchaseDate,
-    purcType: input.purcType,
-    paymentType: input.paymentType, // new
-    subtotal: totals.subtotal.toFixed(2),
-    discount: input.discount.toFixed(2),
-    freightCharges: input.freightCharges.toFixed(2),
-    vatAmount: totals.vatAmount.toFixed(2),
-    vatRefund: input.vatRefund.toFixed(2),
-    grandTotal: totals.grandTotal.toFixed(2),
-    createdByUserId: userId,
-  })
-  .returning({ id: purchases.id });
+  const [purchase] = await db
+    .insert(purchases)
+    .values({
+      organizationId,
+      supplierId: input.supplierId,
+      supplierInvoiceNumber: input.supplierInvoiceNumber,
+      purchaseDate: input.purchaseDate,
+      purcType: input.purcType,
+      paymentType: input.paymentType,
+      subtotal: totals.subtotal.toFixed(2),
+      discount: input.discount.toFixed(2),
+      freightCharges: input.freightCharges.toFixed(2),
+      vatAmount: totals.vatAmount.toFixed(2),
+      vatRefund: input.vatRefund.toFixed(2),
+      grandTotal: totals.grandTotal.toFixed(2),
+      createdByUserId: userId,
+    })
+    .returning({ id: purchases.id });
 
   if (!purchase) {
     throw new Error("Failed to create purchase");
   }
-
   try {
-    // 2. Insert all purchase_items in one batched call (not a loop of inserts).
-    const insertedItems = await db
-      .insert(purchaseItems)
-      .values(
-        input.items.map((item, i) => ({
-          purchaseId: purchase.id,
-          productId: item.productId,
-          batchNumber: item.batch.batchNumber,
-          manufacturingDate: item.batch.manufacturingDate,
-          expiryDate: item.batch.expiryDate,
-          quantity: item.batch.quantity,
-          purchaseRate: item.purchaseRate.toFixed(2),
-          mrp: (item.batch.mrp ?? 0).toFixed(2),
-          vatApplicable: item.vatApplicable,
-          lineTotal: totals.lineTotals[i].toFixed(2),
-        })),
-      )
-      .returning({ id: purchaseItems.id });
-
+    // 2. Insert purchase_items, build the expense text (fetches its own
+    // product names internally), and get/create the Inventory category —
+    // none of these three depend on each other's results, so run them
+    // in parallel rather than one after another.
+    const [insertedItems, { description, note }, inventoryCategory] =
+      await Promise.all([
+        db
+          .insert(purchaseItems)
+          .values(
+            input.items.map((item, i) => ({
+              purchaseId: purchase.id,
+              productId: item.productId,
+              batchNumber: item.batch.batchNumber,
+              manufacturingDate: item.batch.manufacturingDate,
+              expiryDate: item.batch.expiryDate,
+              quantity: item.batch.quantity,
+              purchaseRate: item.purchaseRate.toFixed(2),
+              mrp: (item.batch.mrp ?? 0).toFixed(2),
+              vatApplicable: item.vatApplicable,
+              lineTotal: totals.lineTotals[i].toFixed(2),
+            })),
+          )
+          .returning({ id: purchaseItems.id }),
+        buildPurchaseExpenseText(input),
+        getOrCreateInventoryCategory(organizationId), // cached — usually a Redis hit, not a DB call
+      ]);
     // 3. One batch per purchase item — 1:1, as designed.
     const insertedBatches = await db
       .insert(batches)
@@ -132,10 +319,9 @@ const [purchase] = await db
         })),
       )
       .returning({ id: batches.id });
-
     // 4. Link each purchase_item back to the batch it created.
     await Promise.all(
-      insertedItems.map((pi, i) =>
+      insertedItems.map((pi: any, i: any) =>
         db
           .update(purchaseItems)
           .set({ batchId: insertedBatches[i].id })
@@ -143,9 +329,7 @@ const [purchase] = await db
       ),
     );
 
-    // 5. Increase stockQuantity per product — sum quantities per productId
-    // first, since one purchase can have multiple lines for the same product
-    // (different batches), and we want one UPDATE per product, not one per line.
+    // 5. Increase stockQuantity per product.
     const quantityByProduct = new Map<string, number>();
     for (const item of input.items) {
       quantityByProduct.set(
@@ -166,7 +350,19 @@ const [purchase] = await db
       ),
     );
 
-    // 6. Invalidate caches for everything this purchase just changed.
+    // 6. Write the linked "Inventory" expense row, using the description/note
+    // already built back in step 2.
+    await db.insert(expenses).values({
+      organizationId,
+      categoryId: inventoryCategory.id,
+      description,
+      note,
+      amount: totals.grandTotal.toFixed(2),
+      expenseDate: input.purchaseDate,
+      createdByUserId: userId,
+    });
+
+    // 7. Invalidate caches for everything this purchase just changed.
     await Promise.all([
       invalidateCache(`products:list:${organizationId}`),
       ...Array.from(quantityByProduct.keys()).map((productId) =>
@@ -181,10 +377,15 @@ const [purchase] = await db
   }
 }
 
-// delete a purchase and all its items, batches, and stockQuantity changes
-export async function deletePurchase(organizationId: string, purchaseId: string) {
+export async function deletePurchase(
+  organizationId: string,
+  purchaseId: string,
+) {
   const purchase = await db.query.purchases.findFirst({
-    where: and(eq(purchases.id, purchaseId), eq(purchases.organizationId, organizationId)),
+    where: and(
+      eq(purchases.id, purchaseId),
+      eq(purchases.organizationId, organizationId),
+    ),
     columns: { id: true },
     with: {
       items: {
@@ -197,7 +398,9 @@ export async function deletePurchase(organizationId: string, purchaseId: string)
     throw new Error("Purchase not found");
   }
 
-    const batchIds = purchase.items.map((item) => item.batchId).filter((id): id is string => !!id);
+  const batchIds = purchase.items
+    .map((item) => item.batchId)
+    .filter((id): id is string => !!id);
 
   if (batchIds.length > 0) {
     const relatedBatches = await db.query.batches.findMany({
@@ -206,27 +409,35 @@ export async function deletePurchase(organizationId: string, purchaseId: string)
     });
 
     // Block if any batch from this purchase has already been sold/used.
-    const usedBatch = relatedBatches.find((b) => b.quantityAvailable < b.quantityReceived);
+    const usedBatch = relatedBatches.find(
+      (b) => b.quantityAvailable < b.quantityReceived,
+    );
     if (usedBatch) {
       throw new Error(
-        "Cannot delete this purchase — stock from one of its batches has already been sold or moved"
+        "Cannot delete this purchase — stock from one of its batches has already been sold or moved",
       );
     }
   }
-    const quantityByProduct = new Map<string, number>();
+  const quantityByProduct = new Map<string, number>();
   for (const item of purchase.items) {
-    quantityByProduct.set(item.productId, (quantityByProduct.get(item.productId) ?? 0) + item.quantity);
+    quantityByProduct.set(
+      item.productId,
+      (quantityByProduct.get(item.productId) ?? 0) + item.quantity,
+    );
   }
 
   await Promise.all(
     Array.from(quantityByProduct.entries()).map(([productId, qty]) =>
       db
         .update(products)
-        .set({ stockQuantity: sql`${products.stockQuantity} - ${qty}`, updatedAt: new Date() })
-        .where(eq(products.id, productId))
-    )
+        .set({
+          stockQuantity: sql`${products.stockQuantity} - ${qty}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(products.id, productId)),
+    ),
   );
-    if (batchIds.length > 0) {
+  if (batchIds.length > 0) {
     await db.delete(batches).where(inArray(batches.id, batchIds));
   }
 
@@ -235,7 +446,7 @@ export async function deletePurchase(organizationId: string, purchaseId: string)
   await Promise.all([
     invalidateCache(`products:list:${organizationId}`),
     ...Array.from(quantityByProduct.keys()).map((productId) =>
-      invalidateCache(`products:one:${organizationId}:${productId}`)
+      invalidateCache(`products:one:${organizationId}:${productId}`),
     ),
   ]);
 
@@ -245,10 +456,13 @@ export async function deletePurchase(organizationId: string, purchaseId: string)
 export async function updatePurchase(
   organizationId: string,
   purchaseId: string,
-  input: UpdatePurchaseInput
+  input: UpdatePurchaseInput,
 ) {
   const existingPurchase = await db.query.purchases.findFirst({
-    where: and(eq(purchases.id, purchaseId), eq(purchases.organizationId, organizationId)),
+    where: and(
+      eq(purchases.id, purchaseId),
+      eq(purchases.organizationId, organizationId),
+    ),
     columns: { id: true },
     with: {
       items: {
@@ -262,10 +476,12 @@ export async function updatePurchase(
   }
   const existingItemIds = new Set(existingPurchase.items.map((i) => i.id));
   const incomingItemIds = new Set(
-    input.items.filter((i) => i.purchaseItemId).map((i) => i.purchaseItemId!)
+    input.items.filter((i) => i.purchaseItemId).map((i) => i.purchaseItemId!),
   );
-    // Lines present before but missing now = removed by the user.
-  const removedItems = existingPurchase.items.filter((i) => !incomingItemIds.has(i.id));
+  // Lines present before but missing now = removed by the user.
+  const removedItems = existingPurchase.items.filter(
+    (i) => !incomingItemIds.has(i.id),
+  );
 
   // Guard: don't let a removal or a quantity reduction touch a batch that's
   // already been partially sold.
@@ -273,9 +489,13 @@ export async function updatePurchase(
     ...removedItems.map((i) => i.batchId),
     ...input.items
       .filter((i) => i.purchaseItemId)
-      .map((i) => existingPurchase.items.find((e) => e.id === i.purchaseItemId)?.batchId),
+      .map(
+        (i) =>
+          existingPurchase.items.find((e) => e.id === i.purchaseItemId)
+            ?.batchId,
+      ),
   ].filter((id): id is string => !!id);
-    if (touchedBatchIds.length > 0) {
+  if (touchedBatchIds.length > 0) {
     const relatedBatches = await db.query.batches.findMany({
       where: inArray(batches.id, touchedBatchIds),
       columns: { id: true, quantityReceived: true, quantityAvailable: true },
@@ -283,7 +503,9 @@ export async function updatePurchase(
 
     for (const item of input.items) {
       if (!item.purchaseItemId) continue;
-      const existingItem = existingPurchase.items.find((e) => e.id === item.purchaseItemId);
+      const existingItem = existingPurchase.items.find(
+        (e) => e.id === item.purchaseItemId,
+      );
       if (!existingItem?.batchId) continue;
       const batch = relatedBatches.find((b) => b.id === existingItem.batchId);
       if (!batch) continue;
@@ -291,14 +513,16 @@ export async function updatePurchase(
       const soldSoFar = batch.quantityReceived - batch.quantityAvailable;
       if (item.batch.quantity < soldSoFar) {
         throw new Error(
-          `Cannot reduce quantity below ${soldSoFar} units — that much has already been sold from this batch`
+          `Cannot reduce quantity below ${soldSoFar} units — that much has already been sold from this batch`,
         );
       }
     }
     for (const removed of removedItems) {
       const batch = relatedBatches.find((b) => b.id === removed.batchId);
       if (batch && batch.quantityAvailable < batch.quantityReceived) {
-        throw new Error("Cannot remove a line whose batch has already been sold from");
+        throw new Error(
+          "Cannot remove a line whose batch has already been sold from",
+        );
       }
     }
   }
@@ -331,25 +555,30 @@ export async function updatePurchase(
       }
       quantityDeltaByProduct.set(
         removed.productId,
-        (quantityDeltaByProduct.get(removed.productId) ?? 0) - removed.quantity
+        (quantityDeltaByProduct.get(removed.productId) ?? 0) - removed.quantity,
       );
     }
     if (removedItems.length > 0) {
       await db.delete(purchaseItems).where(
-        inArray(purchaseItems.id, removedItems.map((i) => i.id))
+        inArray(
+          purchaseItems.id,
+          removedItems.map((i) => i.id),
+        ),
       );
     }
-     // 3. Handle existing lines: update purchase_item + its batch, track the delta.
+    // 3. Handle existing lines: update purchase_item + its batch, track the delta.
     for (const [i, item] of input.items.entries()) {
       if (!item.purchaseItemId) continue;
 
-      const existingItem = existingPurchase.items.find((e) => e.id === item.purchaseItemId)!;
+      const existingItem = existingPurchase.items.find(
+        (e) => e.id === item.purchaseItemId,
+      )!;
       const delta = item.batch.quantity - existingItem.quantity;
       quantityDeltaByProduct.set(
         item.productId,
-        (quantityDeltaByProduct.get(item.productId) ?? 0) + delta
+        (quantityDeltaByProduct.get(item.productId) ?? 0) + delta,
       );
-            await db
+      await db
         .update(purchaseItems)
         .set({
           productId: item.productId,
@@ -363,7 +592,7 @@ export async function updatePurchase(
           lineTotal: totals.lineTotals[i].toFixed(2),
         })
         .where(eq(purchaseItems.id, item.purchaseItemId));
-              if (existingItem.batchId) {
+      if (existingItem.batchId) {
         await db
           .update(batches)
           .set({
@@ -373,7 +602,9 @@ export async function updatePurchase(
             purchasePrice: item.purchaseRate.toFixed(2),
             mrp: (item.batch.mrp ?? 0).toFixed(2),
             salePrice:
-              item.batch.salePrice !== undefined ? item.batch.salePrice.toFixed(2) : null,
+              item.batch.salePrice !== undefined
+                ? item.batch.salePrice.toFixed(2)
+                : null,
             quantityReceived: item.batch.quantity,
             quantityAvailable: sql`${batches.quantityAvailable} + ${delta}`,
             updatedAt: new Date(),
@@ -381,7 +612,7 @@ export async function updatePurchase(
           .where(eq(batches.id, existingItem.batchId));
       }
     }
- // 4. Handle new lines (no purchaseItemId): insert item + batch, same as create.
+    // 4. Handle new lines (no purchaseItemId): insert item + batch, same as create.
     const newItems = input.items.filter((i) => !i.purchaseItemId);
     if (newItems.length > 0) {
       const newLineTotals = newItems.map((item) => {
@@ -403,10 +634,10 @@ export async function updatePurchase(
             mrp: (item.batch.mrp ?? 0).toFixed(2),
             vatApplicable: item.vatApplicable,
             lineTotal: newLineTotals[i].toFixed(2),
-          }))
+          })),
         )
         .returning({ id: purchaseItems.id });
-              const insertedBatches = await db
+      const insertedBatches = await db
         .insert(batches)
         .values(
           newItems.map((item) => ({
@@ -419,23 +650,29 @@ export async function updatePurchase(
             purchasePrice: item.purchaseRate.toFixed(2),
             mrp: (item.batch.mrp ?? 0).toFixed(2),
             salePrice:
-              item.batch.salePrice !== undefined ? item.batch.salePrice.toFixed(2) : null,
+              item.batch.salePrice !== undefined
+                ? item.batch.salePrice.toFixed(2)
+                : null,
             quantityReceived: item.batch.quantity,
             quantityAvailable: item.batch.quantity,
             status: "ACTIVE" as const,
-          }))
+          })),
         )
         .returning({ id: batches.id });
 
       await Promise.all(
         insertedItems.map((pi, i) =>
-          db.update(purchaseItems).set({ batchId: insertedBatches[i].id }).where(eq(purchaseItems.id, pi.id))
-        )
+          db
+            .update(purchaseItems)
+            .set({ batchId: insertedBatches[i].id })
+            .where(eq(purchaseItems.id, pi.id)),
+        ),
       );
-            for (const item of newItems) {
+      for (const item of newItems) {
         quantityDeltaByProduct.set(
           item.productId,
-          (quantityDeltaByProduct.get(item.productId) ?? 0) + item.batch.quantity
+          (quantityDeltaByProduct.get(item.productId) ?? 0) +
+            item.batch.quantity,
         );
       }
     }
@@ -447,14 +684,17 @@ export async function updatePurchase(
         .map(([productId, delta]) =>
           db
             .update(products)
-            .set({ stockQuantity: sql`${products.stockQuantity} + ${delta}`, updatedAt: new Date() })
-            .where(eq(products.id, productId))
-        )
+            .set({
+              stockQuantity: sql`${products.stockQuantity} + ${delta}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(products.id, productId)),
+        ),
     );
-        await Promise.all([
+    await Promise.all([
       invalidateCache(`products:list:${organizationId}`),
       ...Array.from(quantityDeltaByProduct.keys()).map((productId) =>
-        invalidateCache(`products:one:${organizationId}:${productId}`)
+        invalidateCache(`products:one:${organizationId}:${productId}`),
       ),
     ]);
 

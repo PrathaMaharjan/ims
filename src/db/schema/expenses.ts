@@ -13,9 +13,6 @@ export const expenseCategories = pgTable("expense_categories", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Manual expenses only — purchases are already a cost via purchases.grandTotal
-// and must NOT be duplicated here. Gross profit reports should combine both
-// sources at query time, not by copying purchase rows into this table.
 export const expenses = pgTable("expenses", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id")
@@ -24,6 +21,7 @@ export const expenses = pgTable("expenses", {
   categoryId: uuid("category_id").references(() => expenseCategories.id, {
     onDelete: "set null",
   }),
+  note:text("note"),
   description: text("description"),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   expenseDate: date("expense_date").notNull(),

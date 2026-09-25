@@ -25,9 +25,6 @@ import {
     Cell,
 } from "recharts";
 
-/* ------------------------------------------------------------------ */
-/* Types & static seed data                                            */
-/* ------------------------------------------------------------------ */
 
 interface MonthRow {
     month: string; // "2026-01"
@@ -197,7 +194,7 @@ export default function AnalyticsPage() {
                     <div>
                         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Expense</p>
                         <p className="text-3xl font-bold text-slate-800 mt-1">{money(overallRow.totalExpense)}</p>
-                        <p className="text-[11px] text-slate-400 mt-1">Purchases + Wastage + Manual</p>
+
                     </div>
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
                         <Receipt className="h-6 w-6" />

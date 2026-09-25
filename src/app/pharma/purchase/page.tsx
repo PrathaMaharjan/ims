@@ -1083,7 +1083,6 @@ export default function PurchasePage() {
                             <th className="py-3 px-2.5 w-[90px]">Qty</th>
                             <th className="py-3 px-2 w-[70px] text-center">Unit</th>
                             <th className="py-3 px-2.5 w-[110px]">Pur. Rate</th>
-                            <th className="py-3 px-2 w-[70px] text-center">VAT</th>
                             <th className="py-3 px-3 w-[110px] text-right">Amount</th>
                             <th className="py-3 px-3 min-w-[220px]">Batch Details</th>
                             <th className="py-3 px-2 w-[50px] text-center"></th>
@@ -1139,15 +1138,6 @@ export default function PurchasePage() {
                                       className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                                     />
                                   </td>
-                                  <td className="py-3 px-2 text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={line.vatApplicable}
-                                      onChange={e => updateLine(line.id, { vatApplicable: e.target.checked })}
-                                      className="h-4 w-4 rounded border-slate-300 text-[#044d73] focus:ring-[#044d73]"
-                                      title="VAT applicable on this line"
-                                    />
-                                  </td>
                                   <td className="py-3 px-3 text-right font-bold text-slate-800">
                                     <div className="flex h-9 items-center justify-end">{rs(lineAmount(line))}</div>
                                   </td>
@@ -1194,7 +1184,7 @@ export default function PurchasePage() {
 
                                 {isExpanded && (
                                   <tr className="bg-slate-50/80 border-b border-slate-200 animate-in fade-in duration-150">
-                                    <td colSpan={9} className="p-3.5 pl-10 pr-6">
+                                    <td colSpan={8} className="p-3.5 pl-10 pr-6">
                                       <div className="rounded-xl border border-[#044d73]/25 bg-white p-4 shadow-sm space-y-3.5">
                                         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                                           <div className="flex items-center gap-2">

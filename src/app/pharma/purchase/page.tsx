@@ -687,11 +687,7 @@ function buildPayload() {
       {/* Header */}
       <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div>
-<<<<<<< HEAD
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Purchase</h1>
-=======
-          <h1 className="text-2xl font-semibold tracking-tight">Purchase</h1>
->>>>>>> db6d4224199bcce5937a2b4a046fea6bc1b49b46
         </div>
         <button
           onClick={openAdd}

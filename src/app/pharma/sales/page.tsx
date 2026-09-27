@@ -843,7 +843,7 @@ export default function SalesPage() {
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
-      <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
+      <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sales</h1>
           <p className="text-xs text-white/70 mt-0.5">Sales invoices, cash & credit billing with batch inventory tracking</p>
@@ -903,8 +903,8 @@ export default function SalesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-wrap">
+        <div className="relative flex-1 min-w-0 sm:min-w-[200px] w-full sm:max-w-sm">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
@@ -1024,10 +1024,12 @@ export default function SalesPage() {
 
       {/* Delete Confirmation */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white border border-slate-200 w-full max-w-sm rounded-xl shadow-xl overflow-hidden">
-            <div className="flex flex-col items-center text-center gap-3 p-6 border-b border-slate-100">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50"><Trash2 className="h-6 w-6 text-red-500" /></div>
+            <div className="flex flex-col items-center text-center gap-3 p-5 sm:p-6 border-b border-slate-100">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+                <Trash2 className="h-6 w-6 text-red-500" />
+              </div>
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Delete Sales Voucher?</h3>
                 <p className="text-sm text-slate-500 mt-1">This will reverse the stock deducted by this sale.</p>
@@ -1158,7 +1160,7 @@ export default function SalesPage() {
 
       {/* Add / Edit Sale Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white border border-slate-200 w-full max-w-5xl max-h-[94vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
             <div className="relative flex shrink-0 items-center justify-between px-7 py-5 bg-[#044d73] text-white">
               <div className="flex items-center gap-3.5">
@@ -1398,8 +1400,15 @@ export default function SalesPage() {
                 </div>
               </div>
 
-              <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-white p-5 px-7">
-                <button type="button" onClick={closeModal} className="flex-1 rounded-lg border border-slate-200 bg-slate-50 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+              {/* Modal Footer */}
+              <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-white p-4 sm:p-5 px-4 sm:px-7">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
                 <button
                   type="submit"
                   disabled={saving || validItems.length === 0 || missingBatch || hasExceededBatchStock}

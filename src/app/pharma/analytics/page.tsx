@@ -148,16 +148,16 @@ export default function AnalyticsPage() {
     return (
         <div className="flex flex-col gap-8">
             {/* Header */}
-            <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
+                    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Analytics</h1>
                 </div>
-                <div className="bg-white/10 border border-white/20 p-1 rounded-xl flex items-center gap-1">
+                <div className="bg-white/10 border border-white/20 p-1 rounded-xl flex items-center justify-center gap-1 w-full sm:w-auto">
                     {VIEW_MODES.map(m => (
                         <button
                             key={m.value}
                             onClick={() => setViewMode(m.value)}
-                            className={`font-bold text-xs px-4 py-1.5 rounded-lg transition-all ${viewMode === m.value ? "bg-white text-[#044d73]" : "text-white/80 hover:text-white"
+                            className={`flex-1 sm:flex-none text-center font-bold text-xs px-3 sm:px-4 py-1.5 rounded-lg transition-all ${viewMode === m.value ? "bg-white text-[#044d73]" : "text-white/80 hover:text-white"
                                 }`}
                         >
                             {m.label}
@@ -167,49 +167,48 @@ export default function AnalyticsPage() {
             </div>
 
             {/* Range controls */}
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">Date Range</div>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                     <input type="month" value={startMonth} onChange={e => setStartMonth(e.target.value)}
-                        className="rounded-lg py-1.5 px-2.5 text-xs outline-none border border-slate-200 bg-white text-slate-700 focus:border-[#044d73]" />
+                        className="flex-1 sm:flex-none rounded-lg py-1.5 px-2 text-xs outline-none border border-slate-200 bg-white text-slate-700 focus:border-[#044d73]" />
                     <span className="text-xs text-slate-400">to</span>
                     <input type="month" value={endMonth} onChange={e => setEndMonth(e.target.value)}
-                        className="rounded-lg py-1.5 px-2.5 text-xs outline-none border border-slate-200 bg-white text-slate-700 focus:border-[#044d73]" />
+                        className="flex-1 sm:flex-none rounded-lg py-1.5 px-2 text-xs outline-none border border-slate-200 bg-white text-slate-700 focus:border-[#044d73]" />
                 </div>
             </div>
 
             {/* Stat cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="rounded-xl border-l-4 border-l-[#044d73] border border-slate-200 bg-white p-5 shadow-sm flex items-center justify-between">
+                <div className="rounded-xl border-l-4 border-l-[#044d73] border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between">
                     <div>
                         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Revenue</p>
-                        <p className="text-3xl font-bold text-slate-800 mt-1">{money(overallRow.revenue)}</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1">{money(overallRow.revenue)}</p>
                     </div>
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#044d73]/10 text-[#044d73]">
-                        <Wallet className="h-6 w-6" />
+                    <div className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-[#044d73]/10 text-[#044d73]">
+                        <Wallet className="h-5 w-5 sm:h-6 sm:w-6" />
                     </div>
                 </div>
 
-                <div className="rounded-xl border-l-4 border-l-rose-500 border border-slate-200 bg-white p-5 shadow-sm flex items-center justify-between">
+                <div className="rounded-xl border-l-4 border-l-rose-500 border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between">
                     <div>
                         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Expense</p>
-                        <p className="text-3xl font-bold text-slate-800 mt-1">{money(overallRow.totalExpense)}</p>
-
+                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1">{money(overallRow.totalExpense)}</p>
                     </div>
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
-                        <Receipt className="h-6 w-6" />
+                    <div className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                        <Receipt className="h-5 w-5 sm:h-6 sm:w-6" />
                     </div>
                 </div>
 
-                <div className={`rounded-xl border-l-4 ${isProfitPositive ? "border-l-emerald-500" : "border-l-rose-500"} border border-slate-200 bg-white p-5 shadow-sm flex items-center justify-between`}>
+                <div className={`rounded-xl border-l-4 ${isProfitPositive ? "border-l-emerald-500" : "border-l-rose-500"} border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between`}>
                     <div>
                         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Net Profit</p>
-                        <p className={`text-3xl font-bold mt-1 ${isProfitPositive ? "text-emerald-600" : "text-rose-600"}`}>
+                        <p className={`text-2xl sm:text-3xl font-bold mt-1 ${isProfitPositive ? "text-emerald-600" : "text-rose-600"}`}>
                             {money(overallRow.netProfit)}
                         </p>
                     </div>
-                    <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${isProfitPositive ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}>
-                        {isProfitPositive ? <TrendingUp className="h-6 w-6" /> : <TrendingDown className="h-6 w-6" />}
+                    <div className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl ${isProfitPositive ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}>
+                        {isProfitPositive ? <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6" /> : <TrendingDown className="h-5 w-5 sm:h-6 sm:w-6" />}
                     </div>
                 </div>
             </div>
@@ -217,7 +216,7 @@ export default function AnalyticsPage() {
             {/* Trend chart + expense split */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Area + line combo chart */}
-                <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm p-5 flex flex-col gap-4">
+                <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 flex flex-col gap-4 min-w-0">
                     <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-lg bg-[#044d73]/10 flex items-center justify-center">
                             <TrendingUp className="w-3.5 h-3.5 text-[#044d73]" />
@@ -258,7 +257,7 @@ export default function AnalyticsPage() {
                 </div>
 
                 {/* Expense breakdown donut */}
-                <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5 flex flex-col gap-4">
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 flex flex-col gap-4 min-w-0">
                     <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-lg bg-[#044d73]/10 flex items-center justify-center">
                             <PieIcon className="w-3.5 h-3.5 text-[#044d73]" />
@@ -295,7 +294,7 @@ export default function AnalyticsPage() {
             </div>
 
             {/* Detail table */}
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 space-y-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                         <Receipt className="w-4 h-4 text-slate-400" />

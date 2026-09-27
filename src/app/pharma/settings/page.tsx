@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { api } from "@/lib/api-client";
+import { DotsLoader } from "../_components/ui/dots-loader";
 
 interface OrgDetails {
     businessName: string;
@@ -197,7 +198,11 @@ export default function SettingsPage() {
     }
 
     if (loading) {
-        return <div className="py-16 text-center text-sm text-slate-400">Loading settings...</div>;
+        return (
+            <div className="py-24 flex items-center justify-center">
+                <DotsLoader text="Loading settings..." />
+            </div>
+        );
     }
 
     if (loadError || !orgForm) {
@@ -221,30 +226,30 @@ export default function SettingsPage() {
                 </div>
             )}
 
-            <div className="rounded-xl bg-[#044d73] px-6 py-6 text-white shadow-sm flex items-center justify-between">
+            <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Settings</h1>
                 </div>
             </div>
 
-            <div className="flex items-center gap-2 border-b border-slate-200">
+            <div className="flex items-center gap-1 sm:gap-2 border-b border-slate-200 overflow-x-auto no-scrollbar pb-px">
                 <button
                     onClick={() => setActiveTab("org")}
-                    className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all ${activeTab === "org" ? "border-[#044d73] text-[#044d73]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+                    className={`flex shrink-0 whitespace-nowrap items-center gap-2 border-b-2 px-3.5 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold transition-all ${activeTab === "org" ? "border-[#044d73] text-[#044d73]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
                 >
                     <Building2 className="h-4 w-4" />
                     Organization Details
                 </button>
                 <button
                     onClick={() => setActiveTab("user")}
-                    className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all ${activeTab === "user" ? "border-[#044d73] text-[#044d73]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+                    className={`flex shrink-0 whitespace-nowrap items-center gap-2 border-b-2 px-3.5 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold transition-all ${activeTab === "user" ? "border-[#044d73] text-[#044d73]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
                 >
                     <User className="h-4 w-4" />
                     User Details
                 </button>
                 <button
                     onClick={() => setActiveTab("password")}
-                    className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-all ${activeTab === "password" ? "border-[#044d73] text-[#044d73]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+                    className={`flex shrink-0 whitespace-nowrap items-center gap-2 border-b-2 px-3.5 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold transition-all ${activeTab === "password" ? "border-[#044d73] text-[#044d73]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
                 >
                     <KeyRound className="h-4 w-4" />
                     Change Password
@@ -253,11 +258,11 @@ export default function SettingsPage() {
 
             {/* Organization Details Tab */}
             {activeTab === "org" && (
-                <form onSubmit={handleSaveOrg} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
-                    <div className="border-b border-slate-100 pb-6">
+                <form onSubmit={handleSaveOrg} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-5 sm:space-y-6">
+                    <div className="border-b border-slate-100 pb-5 sm:pb-6">
                         <h3 className="text-sm font-bold text-slate-900 mb-1">Organization Logo</h3>
 
-                        <div className="flex items-center gap-5 mt-3">
+                        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-5 mt-3 text-center sm:text-left">
                             <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-slate-200 bg-slate-50 shadow-sm">
                                 {displayedLogo ? (
                                     <img src={displayedLogo} alt="Logo" className="h-full w-full object-cover" />
@@ -350,7 +355,7 @@ export default function SettingsPage() {
                         <button
                             type="submit"
                             disabled={savingOrg}
-                            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50"
+                            className="flex items-center justify-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50 w-full sm:w-auto"
                         >
                             <Save className="h-4 w-4" />
                             {savingOrg ? "Saving..." : "Save Organization Details"}
@@ -361,7 +366,7 @@ export default function SettingsPage() {
 
             {/* User Details Tab */}
             {activeTab === "user" && (
-                <form onSubmit={handleSaveUser} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+                <form onSubmit={handleSaveUser} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-5 sm:space-y-6">
                     <div className="border-b border-slate-100 pb-3">
                         <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                             <User className="h-4 w-4 text-[#044d73]" />
@@ -394,7 +399,7 @@ export default function SettingsPage() {
                         <button
                             type="submit"
                             disabled={savingUser}
-                            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50"
+                            className="flex items-center justify-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50 w-full sm:w-auto"
                         >
                             <Save className="h-4 w-4" />
                             {savingUser ? "Saving..." : "Save User Details"}
@@ -405,7 +410,7 @@ export default function SettingsPage() {
 
             {/* Change Password Tab */}
             {activeTab === "password" && (
-                <form onSubmit={handleSavePassword} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+                <form onSubmit={handleSavePassword} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-5 sm:space-y-6">
                     <div className="border-b border-slate-100 pb-3">
                         <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                             <KeyRound className="h-4 w-4 text-[#044d73]" />
@@ -476,7 +481,7 @@ export default function SettingsPage() {
                         <button
                             type="submit"
                             disabled={savingPassword}
-                            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50"
+                            className="flex items-center justify-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50 w-full sm:w-auto"
                         >
                             <Save className="h-4 w-4" />
                             {savingPassword ? "Updating..." : "Update Password"}

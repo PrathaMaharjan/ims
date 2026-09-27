@@ -262,20 +262,19 @@ export default function DashboardPage() {
     return (
         <div className="flex flex-col gap-8 pb-12">
             {/* Header with View Mode Toggles */}
-            <div className="rounded-xl bg-[#044d73] px-6 py-6 text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-6 text-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-
+                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Dashboard</h1>
                 </div>
 
                 {/* View Mode Pill Switcher */}
-                <div className="flex items-center gap-1.5 self-start md:self-auto rounded-xl bg-white/10 p-1 border border-white/20">
+                <div className="flex items-center gap-1 self-stretch sm:self-auto rounded-xl bg-white/10 p-1 border border-white/20 overflow-x-auto justify-between sm:justify-start">
                     {(["monthly", "yearly", "overall"] as ViewMode[]).map((mode) => (
                         <button
                             key={mode}
                             type="button"
                             onClick={() => setViewMode(mode)}
-                            className={`rounded-lg px-4 py-1.5 text-xs font-bold capitalize transition-all ${viewMode === mode
+                            className={`flex-1 sm:flex-none text-center rounded-lg px-3 sm:px-4 py-1.5 text-xs font-bold capitalize transition-all ${viewMode === mode
                                 ? "bg-white text-[#044d73] shadow-sm"
                                 : "text-white/80 hover:text-white hover:bg-white/5"
                                 }`}
@@ -287,20 +286,20 @@ export default function DashboardPage() {
             </div>
 
             {/* Filter & Date Range Bar */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3 flex-wrap">
+            <div className="rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
                         <Calendar className="h-4 w-4 text-[#044d73]" />
                         <span>Date Range:</span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
                         <input
                             type="month"
                             value={dateFrom}
                             max={dateTo || undefined}
                             onChange={(e) => setDateFrom(e.target.value)}
-                            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#044d73]"
+                            className="flex-1 sm:flex-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#044d73]"
                         />
                         <span className="text-xs text-slate-400">to</span>
                         <input
@@ -308,7 +307,7 @@ export default function DashboardPage() {
                             value={dateTo}
                             min={dateFrom || undefined}
                             onChange={(e) => setDateTo(e.target.value)}
-                            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#044d73]"
+                            className="flex-1 sm:flex-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#044d73]"
                         />
                     </div>
 
@@ -316,15 +315,13 @@ export default function DashboardPage() {
                         <button
                             type="button"
                             onClick={resetFilters}
-                            className="flex items-center gap-1 text-xs text-[#044d73] hover:underline font-semibold ml-1"
+                            className="flex items-center gap-1 text-xs text-[#044d73] hover:underline font-semibold self-start sm:self-auto"
                         >
                             <RotateCcw className="h-3 w-3" />
                             Reset
                         </button>
                     )}
                 </div>
-
-
             </div>
 
 
@@ -399,7 +396,7 @@ export default function DashboardPage() {
             {/* Recharts Analytics Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Main Trends Chart (Area + Line) */}
-                <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col gap-4">
+                <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm flex flex-col gap-4 min-w-0">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                         <div className="flex items-center gap-2">
                             <div className="h-8 w-8 rounded-lg bg-[#044d73]/10 text-[#044d73] flex items-center justify-center">
@@ -416,9 +413,9 @@ export default function DashboardPage() {
                         </span>
                     </div>
 
-                    <div className="w-full h-80 pt-2">
+                    <div className="w-full h-72 sm:h-80 pt-2 min-w-0">
                         <ResponsiveContainer width="100%" height="100%">
-                            <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                            <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
                                 <defs>
                                     <linearGradient id="dashRevGrad" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#044d73" stopOpacity={0.35} />
@@ -474,7 +471,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Donut Chart: Sales Breakdown (Categories / Payment Types) */}
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between gap-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm flex flex-col justify-between gap-4 min-w-0">
                     <div>
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-2">
                             <h3 className="text-sm font-bold text-slate-900">Revenue Breakdown</h3>
@@ -546,7 +543,7 @@ export default function DashboardPage() {
             {/* Bottom Section: Critical Stock Watchlist & Recent Activity */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Critical Stock & Expiry Watchlist */}
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-4 min-w-0">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                         <div className="flex items-center gap-2">
                             <AlertTriangle className="h-4 w-4 text-amber-500" />
@@ -563,11 +560,11 @@ export default function DashboardPage() {
 
                     <div className="divide-y divide-slate-100">
                         {CRITICAL_ITEMS.map((item) => (
-                            <div key={item.name} className="py-3 flex items-center justify-between gap-4">
+                            <div key={item.name} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                         <h4 className="text-xs font-bold text-slate-800 truncate">{item.name}</h4>
-                                        <span className="text-[10px] font-semibold text-[#044d73] bg-[#044d73]/10 px-1.5 rounded">
+                                        <span className="text-[10px] font-semibold text-[#044d73] bg-[#044d73]/10 px-1.5 rounded shrink-0">
                                             {item.brand}
                                         </span>
                                     </div>
@@ -576,7 +573,7 @@ export default function DashboardPage() {
                                     </p>
                                 </div>
 
-                                <div className="flex items-center gap-3 shrink-0 text-right">
+                                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                                     <div>
                                         <span className="text-xs font-bold text-slate-800 block">
                                             {item.stock} / {item.min} {item.unit}
@@ -599,7 +596,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Recent Activities */}
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-4 min-w-0">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                         <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-[#044d73]" />

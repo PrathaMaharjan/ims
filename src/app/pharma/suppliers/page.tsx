@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
+import { DotsLoader } from "../_components/ui/dots-loader";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -395,9 +396,13 @@ export default function SuppliersPage() {
       {/* Data Section Container */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
+<<<<<<< HEAD
+          <div className="py-16"><DotsLoader text="Loading suppliers..." size="sm" /></div>
+=======
           <div className="py-16 text-center text-sm text-slate-400">
             Loading suppliers...
           </div>
+>>>>>>> db6d4224199bcce5937a2b4a046fea6bc1b49b46
         ) : (
           <>
             {/* Desktop Table */}
@@ -630,6 +635,11 @@ export default function SuppliersPage() {
 
       {/* Add/Edit Modal */}
       {isModalOpen && (
+<<<<<<< HEAD
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto" onClick={() => setIsModalOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden my-auto">
+            <div className="relative flex items-center justify-center bg-[#044d73] p-4 text-white sm:p-6">
+=======
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm overflow-y-auto"
           onClick={() => setIsModalOpen(false)}
@@ -639,6 +649,7 @@ export default function SuppliersPage() {
             className="w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden my-auto"
           >
             <div className="relative flex items-center justify-center bg-[#044d73] p-5 text-white sm:p-6">
+>>>>>>> db6d4224199bcce5937a2b4a046fea6bc1b49b46
               <div className="hidden h-10 w-10 items-center justify-center text-white sm:flex">
                 <UserPlus className="h-6 w-6" />
               </div>
@@ -783,14 +794,14 @@ export default function SuppliersPage() {
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-sm"
           onClick={() => setDeleteTarget(null)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden mx-auto"
           >
-            <div className="flex flex-col items-center gap-3 p-6 text-center sm:gap-4 sm:p-8">
+            <div className="flex flex-col items-center gap-3 p-5 text-center sm:gap-4 sm:p-8">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600 sm:h-14 sm:w-14">
                 <AlertTriangle className="h-6 w-6 sm:h-7 sm:w-7" />
               </div>

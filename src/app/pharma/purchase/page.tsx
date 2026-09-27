@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
+import { DotsLoader } from "../_components/ui/dots-loader";
 
 /* ------------------------------------------------------------------ */
 /* Types — matches the real backend shapes                             */
@@ -678,15 +679,14 @@ export default function PurchasePage() {
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
-      <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
+      <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Purchase</h1>
-
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Purchase</h1>
         </div>
         <button
           onClick={openAdd}
           disabled={loadingCatalog}
-          className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
+          className="flex items-center justify-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
         >
           <Plus className="h-4 w-4" strokeWidth={2.5} />
           New Purchase
@@ -740,7 +740,7 @@ export default function PurchasePage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loadingPurchases ? (
-                <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">Loading purchases...</td></tr>
+                <tr><td colSpan={9} className="py-16"><DotsLoader text="Loading purchases..." size="sm" /></td></tr>
               ) : purchases.length === 0 ? (
                 <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">No purchases yet.</td></tr>
               ) : purchases.map(p => {
@@ -847,9 +847,9 @@ export default function PurchasePage() {
 
       {/* Delete Confirmation */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white border border-slate-200 w-full max-w-sm rounded-xl shadow-xl overflow-hidden">
-            <div className="flex flex-col items-center text-center gap-3 p-6 border-b border-slate-100">
+            <div className="flex flex-col items-center text-center gap-3 p-5 sm:p-6 border-b border-slate-100">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
                 <Trash2 className="h-6 w-6 text-red-500" />
               </div>
@@ -859,11 +859,11 @@ export default function PurchasePage() {
               </div>
             </div>
             {deleteError && (
-              <div className="mx-6 mt-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600">
+              <div className="mx-5 sm:mx-6 mt-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600">
                 {deleteError}
               </div>
             )}
-            <div className="flex gap-3 p-6">
+            <div className="flex gap-3 p-4 sm:p-6">
               <button onClick={() => setDeleteConfirmId(null)} disabled={deleting}
                 className="flex-1 bg-slate-50 border border-slate-200 text-slate-600 font-medium text-sm py-2.5 rounded-lg disabled:opacity-50">Cancel</button>
               <button onClick={() => handleDelete(deleteConfirmId)} disabled={deleting}
@@ -877,16 +877,16 @@ export default function PurchasePage() {
 
       {/* View Purchase Modal */}
       {viewingPurchase && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setViewingPurchase(null)}>
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4" onClick={() => setViewingPurchase(null)}>
           <div className="bg-white border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="relative flex shrink-0 items-center justify-between p-6 bg-[#044d73] text-white">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
+            <div className="relative flex shrink-0 items-start sm:items-center justify-between p-4 sm:p-6 bg-[#044d73] text-white gap-3">
+              <div className="flex items-start sm:items-center gap-3 min-w-0">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10">
                   <Receipt className="h-5 w-5" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold">{viewingPurchase.supplierInvoiceNumber || "Purchase"}</h3>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-semibold truncate">{viewingPurchase.supplierInvoiceNumber || "Purchase"}</h3>
                     <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold border ${viewingPurchase.paymentType === "CASH"
                       ? "bg-emerald-400/20 border-emerald-300 text-emerald-100"
                       : "bg-amber-400/20 border-amber-300 text-amber-100"
@@ -894,15 +894,15 @@ export default function PurchasePage() {
                       {viewingPurchase.paymentType === "CASH" ? "Cash" : "Credit"}
                     </span>
                   </div>
-                  <p className="text-xs text-white/70 mt-0.5">Date: {viewingPurchase.purchaseDate} · Supplier: {viewingPurchase.supplier?.name || "—"}</p>
+                  <p className="text-xs text-white/70 mt-0.5 break-words">Date: {viewingPurchase.purchaseDate} · Supplier: {viewingPurchase.supplier?.name || "—"}</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setViewingPurchase(null)} className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
+              <button type="button" onClick={() => setViewingPurchase(null)} className="shrink-0 rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6">
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-[#044d73] mb-2.5 flex items-center gap-1.5">
                   <PackagePlus className="w-4 h-4" /> Purchased Items & Batches
@@ -946,7 +946,7 @@ export default function PurchasePage() {
                 </div>
               </div>
 
-              <div className="ml-auto w-full max-w-xs space-y-1.5 rounded-xl bg-slate-50 p-4 border border-slate-200">
+              <div className="sm:ml-auto w-full sm:max-w-xs space-y-1.5 rounded-xl bg-slate-50 p-4 border border-slate-200">
                 <div className="flex justify-between text-xs text-slate-500">
                   <span>Subtotal</span><span>{rs(Number(viewingPurchase.subtotal))}</span>
                 </div>
@@ -965,7 +965,7 @@ export default function PurchasePage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-100 bg-white p-4 px-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-white p-3.5 sm:p-4 px-4 sm:px-6">
               <button
                 type="button"
                 onClick={() => { const p = viewingPurchase; setViewingPurchase(null); openEdit(p); }}
@@ -987,27 +987,27 @@ export default function PurchasePage() {
 
       {/* New / Edit Purchase Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white border border-slate-200 w-full max-w-5xl max-h-[94vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
-            <div className="relative flex shrink-0 items-center justify-between px-7 py-5 bg-[#044d73] text-white">
-              <div className="flex items-center gap-3.5">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10">
-                  <Receipt className="h-6 w-6" />
+            <div className="relative flex shrink-0 items-start sm:items-center justify-between px-4 py-4 sm:px-7 sm:py-5 bg-[#044d73] text-white gap-3">
+              <div className="flex items-start sm:items-center gap-3 sm:gap-3.5 min-w-0">
+                <div className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-white/10">
+                  <Receipt className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
-                <div>
-                  <h3 className="text-xl font-semibold">
+                <div className="min-w-0">
+                  <h3 className="text-lg sm:text-xl font-semibold">
                     {editingPurchaseId ? "Edit Purchase" : "New Purchase"}
                   </h3>
-                  <p className="text-xs text-white/70">Enter items on the line and set batch details directly on the same page</p>
+                  <p className="text-xs text-white/70 line-clamp-1">Enter items on the line and set batch details directly</p>
                 </div>
               </div>
-              <button type="button" onClick={closeModal} className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
+              <button type="button" onClick={closeModal} className="shrink-0 rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
-              <div className="flex-1 space-y-6 overflow-y-auto p-7">
+              <div className="flex-1 space-y-4 sm:space-y-6 overflow-y-auto p-4 sm:p-7">
 
                 {saveError && (
                   <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600 font-medium">
@@ -1325,7 +1325,7 @@ export default function PurchasePage() {
                   </div>
                 </Section>
 
-                <div className="ml-auto w-full max-w-xs space-y-1.5 rounded-xl bg-slate-50 p-4 border border-slate-200">
+                <div className="sm:ml-auto w-full sm:max-w-xs space-y-1.5 rounded-xl bg-slate-50 p-4 border border-slate-200">
                   <div className="flex justify-between text-xs sm:text-sm text-slate-500">
                     <span>Subtotal</span><span>{rs(subtotal)}</span>
                   </div>
@@ -1345,7 +1345,7 @@ export default function PurchasePage() {
                 </div>
               </div>
 
-              <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-white p-5 px-7">
+              <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-white p-4 sm:p-5 px-4 sm:px-7">
                 <button type="button" onClick={closeModal} className="flex-1 rounded-lg border border-slate-200 bg-slate-50 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
                   Cancel
                 </button>

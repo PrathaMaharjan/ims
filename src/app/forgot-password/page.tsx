@@ -260,7 +260,7 @@ export default function ForgotPasswordPage() {
         </div>
 
         {/* Auth Card */}
-        <div className="rounded-3xl border border-slate-200/70 bg-white p-8 shadow-lg shadow-slate-200/50">
+        <div className="rounded-3xl border border-slate-200/70 bg-white p-5 sm:p-8 shadow-lg shadow-slate-200/50">
           {error && (
             <div className="mb-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600 font-medium">
               {error}
@@ -356,7 +356,7 @@ export default function ForgotPasswordPage() {
                       value={digit}
                       onChange={(e) => handleOtpChange(idx, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                      className={`h-12 w-10 sm:w-11 rounded-xl border text-center text-lg sm:text-xl font-bold transition-all focus:outline-none ${
+                      className={`h-11 sm:h-12 w-8 sm:w-11 min-w-0 rounded-lg sm:rounded-xl border text-center text-base sm:text-xl font-bold transition-all focus:outline-none ${
                         digit
                           ? 'border-[#044d73] bg-white text-slate-900 shadow-sm'
                           : 'border-slate-200 bg-slate-50/60 text-slate-800 focus:bg-white'

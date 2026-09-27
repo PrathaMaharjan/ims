@@ -60,7 +60,7 @@ export default function PharmaLayout({ children }: { children: React.ReactNode }
         user={{ name: user.name, email: user.email }}
       />
 
-      <main className="flex-1 p-6 pt-20 md:pt-6">
+      <main className="flex-1 min-w-0 p-3.5 sm:p-5 md:p-6 pt-[4.5rem] md:pt-6">
         {children}
       </main>
     </div>

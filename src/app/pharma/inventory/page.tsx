@@ -8,15 +8,14 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
+import { DotsLoader } from "../_components/ui/dots-loader";
 
-/* ------------------------------------------------------------------ */
-/* Types                                                               */
-/* ------------------------------------------------------------------ */
+
 
 type StockLevel = "in_stock" | "low_stock" | "out_of_stock";
 type Num = number | "";
 
-// Matches GET /products/:id/batches response shape
+
 export interface ApiBatch {
   id: string;
   batchNumber: string;
@@ -46,9 +45,7 @@ interface ItemForm {
   minStockLevel: Num;
 }
 
-// Matches GET /products (list) — includes the real stockQuantity/totalBatches
-// summary computed server-side; the raw batches array is NOT part of the list
-// response, only fetched on demand when viewing one item.
+
 export interface Item {
   id: string;
   name: string;
@@ -262,9 +259,8 @@ function CreatableSelect({
       {onDelete && options.length > 0 && (
         <button
           type="button" onClick={() => setManaging(p => !p)} title={`Manage / Delete ${noun}s`}
-          className={`shrink-0 rounded-lg border px-2.5 transition-colors ${
-            managing ? "border-[#044d73] bg-[#044d73] text-white" : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
-          }`}
+          className={`shrink-0 rounded-lg border px-2.5 transition-colors ${managing ? "border-[#044d73] bg-[#044d73] text-white" : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
+            }`}
         >
           <ListFilter className="h-4 w-4" />
         </button>
@@ -572,15 +568,15 @@ export default function InventoryPage() {
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
-      <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
+      {/* Header */}
+      <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Inventory</h1>
-
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Inventory</h1>
         </div>
         <button
           onClick={openAdd}
           disabled={loadingCatalog}
-          className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
+          className="flex items-center justify-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50 w-full sm:w-auto"
         >
           <Plus className="h-4 w-4" strokeWidth={2.5} />
           Add Item
@@ -594,30 +590,30 @@ export default function InventoryPage() {
       )}
 
       {/* Stats */}
- <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-  {[
-    { label: "Total Items", value: stats.total, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Package className="h-5 w-5 sm:h-6 sm:w-6" /> },
-    { label: "In Stock", value: stats.inStock, border: "border-l-emerald-500", iconBg: "bg-emerald-50 text-emerald-600", icon: <PackageCheck className="h-5 w-5 sm:h-6 sm:w-6" /> },
-    { label: "Low Stock", value: stats.lowStock, border: "border-l-amber-500", iconBg: "bg-amber-50 text-amber-600", icon: <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6" /> },
-    { label: "Out of Stock", value: stats.outOfStock, border: "border-l-red-500", iconBg: "bg-red-50 text-red-500", icon: <PackageX className="h-5 w-5 sm:h-6 sm:w-6" /> },
-  ].map(s => (
-    <div key={s.label} className={`rounded-xl border-l-4 ${s.border} border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between`}>
-      <div>
-        <p className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">{s.label}</p>
-        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1 break-all">
-          <AnimatedStatValue value={s.value} />
-        </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Total Items", value: stats.total, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Package className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "In Stock", value: stats.inStock, border: "border-l-emerald-500", iconBg: "bg-emerald-50 text-emerald-600", icon: <PackageCheck className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "Low Stock", value: stats.lowStock, border: "border-l-amber-500", iconBg: "bg-amber-50 text-amber-600", icon: <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "Out of Stock", value: stats.outOfStock, border: "border-l-red-500", iconBg: "bg-red-50 text-red-500", icon: <PackageX className="h-5 w-5 sm:h-6 sm:w-6" /> },
+        ].map(s => (
+          <div key={s.label} className={`rounded-xl border-l-4 ${s.border} border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between`}>
+            <div>
+              <p className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-wider">{s.label}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1 break-all">
+                <AnimatedStatValue value={s.value} />
+              </p>
+            </div>
+            <div className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl ${s.iconBg}`}>
+              {s.icon}
+            </div>
+          </div>
+        ))}
       </div>
-      <div className={`flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl ${s.iconBg}`}>
-        {s.icon}
-      </div>
-    </div>
-  ))}
-</div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-wrap">
+        <div className="relative flex-1 min-w-[200px] w-full sm:max-w-sm">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
@@ -630,7 +626,7 @@ export default function InventoryPage() {
         <select
           value={categoryFilter}
           onChange={e => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
+          className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
         >
           <option value="ALL">All Categories</option>
           {categories.map(c => (
@@ -640,7 +636,7 @@ export default function InventoryPage() {
         <select
           value={stockFilter}
           onChange={e => { setStockFilter(e.target.value as typeof stockFilter); setCurrentPage(1); }}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
+          className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
         >
           <option value="ALL">All Stock</option>
           <option value="in_stock">In Stock</option>
@@ -668,7 +664,7 @@ export default function InventoryPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loadingCatalog ? (
-                <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">Loading inventory...</td></tr>
+                <tr><td colSpan={9} className="py-16"><DotsLoader text="Loading inventory..." size="sm" /></td></tr>
               ) : paginated.length === 0 ? (
                 <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">No items match criteria.</td></tr>
               ) : paginated.map(item => {
@@ -822,21 +818,21 @@ export default function InventoryPage() {
 
         return (
           <div
-            className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
             onClick={() => setViewingItem(null)}
           >
             <div
               className="bg-white border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
               onClick={e => e.stopPropagation()}
             >
-              <div className="relative flex shrink-0 items-center justify-between p-6 bg-[#044d73] text-white">
-                <div className="flex items-center gap-3.5">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10">
-                    <Package className="h-6 w-6" />
+              <div className="relative flex shrink-0 items-start sm:items-center justify-between p-4 sm:p-6 bg-[#044d73] text-white gap-3">
+                <div className="flex items-start sm:items-center gap-3 sm:gap-3.5 min-w-0">
+                  <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-white/10">
+                    <Package className="h-5 w-5 sm:h-6 sm:w-6" />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xl font-semibold">{viewingItem.name}</h3>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg sm:text-xl font-semibold">{viewingItem.name}</h3>
                       {viewingItem.brand && (
                         <span className="rounded-md bg-white/20 px-2 py-0.5 text-xs font-bold text-white border border-white/25">
                           {viewingItem.brand}
@@ -847,7 +843,7 @@ export default function InventoryPage() {
                         {stockStyle.label}
                       </span>
                     </div>
-                    <p className="text-xs text-white/70 mt-0.5">
+                    <p className="text-xs text-white/70 mt-1 break-words">
                       {viewingItem.category ? `Category: ${viewingItem.category} · ` : ""}
                       {viewingItem.alias ? `Alias: ${viewingItem.alias} · ` : ""}
                       HSN: {viewingItem.hsnCode || "—"} · Unit: {viewingItem.unit}
@@ -855,12 +851,12 @@ export default function InventoryPage() {
                     </p>
                   </div>
                 </div>
-                <button type="button" onClick={() => setViewingItem(null)} className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
+                <button type="button" onClick={() => setViewingItem(null)} className="shrink-0 rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Available Stock</span>
@@ -1001,7 +997,7 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between border-t border-slate-100 bg-white p-4 px-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-white p-3.5 sm:p-4 px-4 sm:px-6">
                 <button
                   type="button"
                   onClick={() => {
@@ -1028,26 +1024,26 @@ export default function InventoryPage() {
 
       {/* Add / Edit Item Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white border border-slate-200 w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
-            <div className="relative flex shrink-0 flex-col items-center gap-1 p-8 bg-[#044d73] text-white">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 mb-2">
-                <Package className="h-7 w-7" />
+            <div className="relative flex shrink-0 flex-col items-center text-center gap-1 p-5 sm:p-7 md:p-8 bg-[#044d73] text-white">
+              <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-white/10 mb-1 sm:mb-2">
+                <Package className="h-6 w-6 sm:h-7 sm:w-7" />
               </div>
-              <h3 className="text-2xl font-semibold">
+              <h3 className="text-xl sm:text-2xl font-semibold">
                 {editingItem ? "Edit Item" : "Add New Item"}
               </h3>
-              <p className="text-sm text-white/70">
+              <p className="text-xs sm:text-sm text-white/70 max-w-md">
                 {editingItem ? "Update the item's details below." : "Fill in the details to add an item to inventory."}
               </p>
-              <button type="button" onClick={closeModal} className="absolute right-6 top-6 rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
+              <button type="button" onClick={closeModal} className="absolute right-4 top-4 sm:right-6 sm:top-6 rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
-              <div className="flex-1 space-y-6 overflow-y-auto p-8">
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="flex-1 space-y-4 sm:space-y-6 overflow-y-auto p-4 sm:p-6 md:p-8">
+                <div className="grid grid-cols-1 gap-4 sm:gap-5 sm:grid-cols-2">
                   <Field label="Item Name" span>
                     <TextInput required value={form.name} onChange={v => setField("name", v)} placeholder="e.g. Cefixime 200 MG" />
                   </Field>
@@ -1096,16 +1092,16 @@ export default function InventoryPage() {
               </div>
 
               {saveError && (
-                <div className="mx-8 mb-4 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-xs text-red-600 font-medium">
+                <div className="mx-4 sm:mx-8 mb-4 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-xs text-red-600 font-medium">
                   {saveError}
                 </div>
               )}
 
-              <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-white p-5 px-8">
+              <div className="flex shrink-0 gap-3 border-t border-slate-100 bg-white p-4 sm:p-5 px-4 sm:px-8">
                 <button type="button" onClick={closeModal}
-                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 py-3 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 py-2.5 sm:py-3 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
                 <button type="submit" disabled={saving}
-                  className="flex-1 rounded-lg bg-[#044d73] hover:bg-[#033f60] py-3 text-sm font-medium text-white shadow-sm transition-colors disabled:opacity-50">
+                  className="flex-1 rounded-lg bg-[#044d73] hover:bg-[#033f60] py-2.5 sm:py-3 text-sm font-medium text-white shadow-sm transition-colors disabled:opacity-50">
                   {saving ? "Saving..." : editingItem ? "Save Changes" : "Save Item"}
                 </button>
               </div>

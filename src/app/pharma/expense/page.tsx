@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import {
   Plus,
   Search,
@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Check,
   Boxes,
+  ListFilter,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
@@ -56,7 +57,205 @@ interface Pagination {
   totalPages: number;
 }
 
-const ADD_NEW_VALUE = "__add_new__";
+function CreatableSelect({
+  value,
+  options,
+  onChange,
+  onCreate,
+  onDelete,
+  noun,
+  noneLabel,
+}: {
+  value: string;
+  options: { id: string; name: string }[];
+  onChange: (v: string) => void;
+  onCreate: (raw: string) => string | null | Promise<string | null>;
+  onDelete?: (optionId: string) => void | Promise<void>;
+  noun: string;
+  noneLabel?: string;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [manageSearch, setManageSearch] = useState("");
+  const manageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        manageRef.current &&
+        !manageRef.current.contains(event.target as Node)
+      ) {
+        setManaging(false);
+      }
+    }
+    if (managing) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [managing]);
+
+  function cancel() {
+    setDraft("");
+    setAdding(false);
+  }
+  async function commit() {
+    const createdId = await onCreate(draft);
+    if (createdId) onChange(createdId);
+    cancel();
+  }
+
+  if (adding) {
+    return (
+      <div className="flex gap-2">
+        <input
+          autoFocus
+          value={draft}
+          placeholder={`New ${noun}`}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              cancel();
+            }
+          }}
+          className="w-full rounded-lg border border-slate-200/80 bg-slate-50/30 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400/80 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
+        />
+        <button
+          type="button"
+          onClick={commit}
+          title={`Add ${noun}`}
+          className="shrink-0 rounded-lg bg-[#044d73] px-3.5 text-white hover:bg-[#033f60] transition-colors flex items-center justify-center"
+        >
+          <Check className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={cancel}
+          title="Cancel"
+          className="shrink-0 rounded-lg border border-slate-200 px-3.5 text-slate-500 hover:bg-slate-50 transition-colors flex items-center justify-center"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  const filteredManageOptions = options.filter((o) =>
+    o.name.toLowerCase().includes(manageSearch.toLowerCase()),
+  );
+
+  return (
+    <div className="relative flex gap-2">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-slate-200/80 bg-slate-50/30 px-3 py-2.5 text-sm text-slate-800 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
+      >
+        {noneLabel !== undefined && <option value="">{noneLabel}</option>}
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+
+      <button
+        type="button"
+        onClick={() => {
+          setAdding(true);
+          setManaging(false);
+        }}
+        title={`Add new ${noun}`}
+        className="shrink-0 rounded-lg border border-slate-200 px-3 text-[#044d73] hover:bg-[#044d73]/10 transition-colors flex items-center justify-center"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+
+      {onDelete && options.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setManaging((p) => !p)}
+          title={`Manage / Delete ${noun}s`}
+          className={`shrink-0 rounded-lg border px-2.5 transition-colors flex items-center justify-center ${
+            managing
+              ? "border-[#044d73] bg-[#044d73] text-white"
+              : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <ListFilter className="h-4 w-4" />
+        </button>
+      )}
+
+      {managing && onDelete && (
+        <div
+          ref={manageRef}
+          className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#044d73]">
+              Manage {noun}s ({options.length})
+            </span>
+            <button
+              type="button"
+              onClick={() => setManaging(false)}
+              className="p-0.5 text-slate-400 hover:text-slate-600 rounded"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {options.length > 5 && (
+            <div className="mb-2">
+              <input
+                type="text"
+                value={manageSearch}
+                onChange={(e) => setManageSearch(e.target.value)}
+                placeholder={`Filter ${noun}s...`}
+                className="h-7 w-full rounded border border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#044d73]"
+              />
+            </div>
+          )}
+
+          <div className="max-h-48 overflow-y-auto space-y-1">
+            {filteredManageOptions.length === 0 ? (
+              <p className="p-2 text-center text-xs text-slate-400">
+                No {noun}s found
+              </p>
+            ) : (
+              filteredManageOptions.map((opt) => (
+                <div
+                  key={opt.id}
+                  className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs hover:bg-slate-50 transition-colors"
+                >
+                  <span
+                    className={`truncate font-medium ${
+                      value === opt.id
+                        ? "text-[#044d73] font-semibold"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {opt.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(opt.id)}
+                    title={`Delete "${opt.name}"`}
+                    className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 const PAGE_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 400;
 
@@ -134,8 +333,7 @@ export default function ExpensesPage() {
   const [deleteTarget, setDeleteTarget] = useState<DisplayExpense | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const [isAddingCategory, setIsAddingCategory] = useState(false);
-  const [newCategoryInput, setNewCategoryInput] = useState("");
+
 
   const [isManageCategoriesOpen, setIsManageCategoriesOpen] = useState(false);
   const [manageNewCategoryInput, setManageNewCategoryInput] = useState("");
@@ -243,38 +441,46 @@ export default function ExpensesPage() {
 
   /* ---- categories: create/delete ---- */
 
-  async function createCategory(name: string): Promise<ExpenseCategory | null> {
-    const trimmed = name.trim();
-    if (!trimmed) return null;
+  async function addCategory(raw: string): Promise<string | null> {
+    const name = raw.trim();
+    if (!name) return null;
     const existing = categories.find(
-      (c) => c.name.toLowerCase() === trimmed.toLowerCase(),
+      (c) => c.name.toLowerCase() === name.toLowerCase(),
     );
-    if (existing) return existing;
+    if (existing) return existing.id;
     try {
-      const res = await api.post("/api/expenses/category", { name: trimmed });
+      const res = await api.post("/api/expenses/category", { name });
       const created: ExpenseCategory = res.data.expenseCategory;
       setCategories((prev) =>
         [...prev, created].sort((a, b) => a.name.localeCompare(b.name)),
       );
-      return created;
+      return created.id;
     } catch {
       return null;
     }
   }
 
-  async function addNewCategory() {
-    const created = await createCategory(newCategoryInput);
-    if (created) setForm((p) => ({ ...p, categoryId: created.id }));
-    setNewCategoryInput("");
-    setIsAddingCategory(false);
+  async function deleteCategory(id: string) {
+    try {
+      await api.delete(`/api/expenses/category/${id}`);
+    } catch {
+      return;
+    }
+    setCategories((prev) => prev.filter((c) => c.id !== id));
+    if (form.categoryId === id) setForm((p) => ({ ...p, categoryId: "" }));
+    if (categoryFilter === id) {
+      setCategoryFilter("All");
+      setCurrentPage(1);
+    }
+    await loadExpenses();
   }
 
   async function handleAddCategoryFromManage() {
     const trimmed = manageNewCategoryInput.trim();
     if (!trimmed) return;
     setManageError(null);
-    const created = await createCategory(trimmed);
-    if (!created) {
+    const createdId = await addCategory(trimmed);
+    if (!createdId) {
       setManageError("Failed to add category.");
       return;
     }
@@ -299,6 +505,7 @@ export default function ExpensesPage() {
       setCurrentPage(1);
     }
     setConfirmDeleteCategoryId(null);
+    await loadExpenses();
   }
 
   function openManageCategories() {
@@ -322,8 +529,6 @@ export default function ExpensesPage() {
     setForm(emptyForm());
     setEditingExpense(null);
     setErrorMsg(null);
-    setIsAddingCategory(false);
-    setNewCategoryInput("");
   }
 
   function handleOpenEdit(expense: DisplayExpense) {
@@ -335,8 +540,6 @@ export default function ExpensesPage() {
       date: expense.expenseDate,
       note: expense.note ?? "",
     });
-    setIsAddingCategory(false);
-    setNewCategoryInput("");
     setIsModalOpen(true);
   }
 
@@ -399,9 +602,9 @@ export default function ExpensesPage() {
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
-      <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
+      <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Expenses</h1>
         </div>
         <button
           onClick={() => {
@@ -409,7 +612,7 @@ export default function ExpensesPage() {
             setIsModalOpen(true);
           }}
           disabled={loadingCategories}
-          className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
+          className="flex items-center justify-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
         >
           <Plus className="h-4 w-4" strokeWidth={2.5} />
           Add Expense
@@ -812,14 +1015,14 @@ export default function ExpensesPage() {
       {/* Editor Modal Overlay */}
       {isModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto"
           onClick={() => setIsModalOpen(false)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden my-auto"
           >
-            <div className="relative flex items-center justify-center bg-[#044d73] p-5 text-white sm:p-6">
+            <div className="relative flex items-center justify-center bg-[#044d73] p-4 text-white sm:p-6">
               <div className="hidden h-10 w-10 items-center justify-center text-white sm:flex">
                 <Wallet className="h-6 w-6" />
               </div>
@@ -859,70 +1062,18 @@ export default function ExpensesPage() {
                 <label className="mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2">
                   Category
                 </label>
-                {!isAddingCategory ? (
-                  <div className="relative">
-                    <select
-                      value={form.categoryId}
-                      onChange={(e) => {
-                        if (e.target.value === ADD_NEW_VALUE) {
-                          setIsAddingCategory(true);
-                        } else {
-                          setForm({ ...form, categoryId: e.target.value });
-                        }
-                      }}
-                      className="w-full appearance-none rounded-lg border border-slate-200/80 bg-slate-50/30 px-3 py-2.5 pr-9 text-sm text-slate-800 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
-                    >
-                      <option value="">Select Category</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                      <option value={ADD_NEW_VALUE}>+ Add New Category</option>
-                    </select>
-                    <Tag className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder="New category name"
-                      value={newCategoryInput}
-                      onChange={(e) => setNewCategoryInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addNewCategory();
-                        }
-                        if (e.key === "Escape") {
-                          setIsAddingCategory(false);
-                          setNewCategoryInput("");
-                        }
-                      }}
-                      className="flex-1 rounded-lg border border-slate-200/80 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400/80 bg-slate-50/30 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={addNewCategory}
-                      title="Add category"
-                      className="p-2.5 rounded-lg bg-[#044d73] hover:bg-[#033f60] text-white transition-colors"
-                    >
-                      <Check className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAddingCategory(false);
-                        setNewCategoryInput("");
-                      }}
-                      title="Cancel"
-                      className="p-2.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+                <CreatableSelect
+                  value={form.categoryId}
+                  options={categories}
+                  noun="category"
+                  noneLabel="Select / None"
+                  onChange={(id) => setForm((p) => ({ ...p, categoryId: id }))}
+                  onCreate={addCategory}
+                  onDelete={deleteCategory}
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Pick existing, click + to add new, or use list button to manage/delete
+                </p>
               </div>
 
               <div>
@@ -1000,14 +1151,14 @@ export default function ExpensesPage() {
       {/* Manage Categories Modal */}
       {isManageCategoriesOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-sm"
           onClick={() => setIsManageCategoriesOpen(false)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden"
           >
-            <div className="relative flex flex-col items-center gap-1 bg-[#044d73] p-6 text-white">
+            <div className="relative flex flex-col items-center text-center gap-1 bg-[#044d73] p-5 sm:p-6 text-white">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 mb-1">
                 <Tags className="h-6 w-6" />
               </div>
@@ -1017,7 +1168,7 @@ export default function ExpensesPage() {
               </p>
               <button
                 onClick={() => setIsManageCategoriesOpen(false)}
-                className="absolute right-5 top-5 rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                className="absolute right-4 top-4 sm:right-5 sm:top-5 rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1126,14 +1277,14 @@ export default function ExpensesPage() {
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-sm"
           onClick={() => setDeleteTarget(null)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden mx-auto"
           >
-            <div className="flex flex-col items-center gap-3 p-6 text-center sm:gap-4 sm:p-8">
+            <div className="flex flex-col items-center gap-3 p-5 text-center sm:gap-4 sm:p-8">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600 sm:h-14 sm:w-14">
                 <AlertTriangle className="h-6 w-6 sm:h-7 sm:w-7" />
               </div>

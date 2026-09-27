@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
           items: true,
           supplier: { columns: { id: true, name: true } }, // added — no separate fetch needed
         },
-        orderBy: (table, { desc }) => [desc(table.purchaseDate)],
+        orderBy: (table, { desc }) => [desc(table.createdAt)],
         limit,
         offset,
       }),

@@ -216,7 +216,7 @@ export default function CustomersPage() {
     try {
       if (editingCustomer) {
         const res = await api.patch(
-          `/customers/${editingCustomer.id}`,
+          `/api/customers/${editingCustomer.id}`,
           payload,
         );
         const updated: Customer = res.data.customer;
@@ -254,7 +254,7 @@ export default function CustomersPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await api.delete(`/customers/${deleteTarget.id}`);
+      await api.delete(`/api/customers/${deleteTarget.id}`);
       applyStatsDelta(deleteTarget, null);
       setCustomers((prev) => prev.filter((c) => c.id !== deleteTarget.id));
       setPagination((p) => {
@@ -285,7 +285,7 @@ export default function CustomersPage() {
     );
     applyStatsDelta(customer, updated);
     try {
-      await api.patch(`/customers/${customer.id}`, { status: newStatus });
+      await api.patch(`/api/customers/${customer.id}`, { status: newStatus });
     } catch {
       // revert both the row and the stats delta on failure
       setCustomers((prev) =>
@@ -404,7 +404,8 @@ export default function CustomersPage() {
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                     <th className="py-3 px-4">Customer</th>
-                    <th className="py-3 px-4">Contact</th>
+                    <th className="py-3 px-4">Phone Number</th>
+                    <th className="py-3 px-4">Email</th>
                     <th className="py-3 px-4">Address</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Actions</th>
@@ -414,7 +415,7 @@ export default function CustomersPage() {
                   {filtered.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="py-12 text-center text-sm text-slate-400"
                       >
                         No customers match your search.
@@ -436,15 +437,11 @@ export default function CustomersPage() {
                             </span>
                           </div>
                         </td>
-                        <td className="py-4 px-4 text-slate-500">
-                          <div className="flex flex-col">
-                            <span className="font-medium text-slate-700">
-                              {customer.email || "—"}
-                            </span>
-                            <span className="text-xs text-slate-400 mt-0.5 font-mono">
-                              {customer.phone || "—"}
-                            </span>
-                          </div>
+                        <td className="py-4 px-4 text-slate-600 font-mono text-xs">
+                          {customer.phone || "—"}
+                        </td>
+                        <td className="py-4 px-4 text-slate-600">
+                          {customer.email || "—"}
                         </td>
                         <td className="py-4 px-4 text-slate-500">
                           {customer.address || "—"}
@@ -787,8 +784,4 @@ export default function CustomersPage() {
       )}
     </div>
   );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> db6d4224199bcce5937a2b4a046fea6bc1b49b46

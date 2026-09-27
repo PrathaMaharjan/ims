@@ -57,7 +57,6 @@ interface Pagination {
   totalPages: number;
 }
 
-<<<<<<< HEAD
 function CreatableSelect({
   value,
   options,
@@ -257,7 +256,6 @@ function CreatableSelect({
     </div>
   );
 }
-=======
 // Whole-dataset totals — computed once from a full fetch on load, then kept
 // in sync incrementally as expenses are added/edited/deleted, never by
 // re-fetching and recomputing from scratch on every write.
@@ -271,7 +269,6 @@ interface ExpenseStats {
 }
 
 const ADD_NEW_VALUE = "__add_new__";
->>>>>>> db6d4224199bcce5937a2b4a046fea6bc1b49b46
 const PAGE_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 400;
 const STATS_FETCH_LIMIT = 100;

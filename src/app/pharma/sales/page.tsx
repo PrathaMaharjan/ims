@@ -40,6 +40,9 @@ interface Customer {
   id: string;
   name: string;
   phone: string | null;
+  email?: string | null;
+  address?: string | null;
+  status?: boolean;
 }
 
 interface LineItemForm {
@@ -58,8 +61,16 @@ interface LineItemForm {
   vatApplicable: boolean;
 }
 
+export type AdjustmentCategory =
+  | "Discount"
+  | "Freight and forwarding charges"
+  | "Rounded off (-)"
+  | "Rounded off (+)"
+  | "VAT refund";
+
 interface DiscountRowForm {
   id: string;
+  category: AdjustmentCategory;
   amount: Num;
   type: DiscountType;
 }
@@ -76,7 +87,7 @@ interface SaleForm {
   prescriptionNote: string;
 }
 
-// Shape returned by GET /sales (list) and GET /sales/:id
+
 interface SaleRecord {
   id: string;
   invoiceNumber: number;
@@ -86,6 +97,9 @@ interface SaleRecord {
   customerId: string | null;
   subtotal: string;
   discount: string;
+  freightCharges?: string;
+  vatRefund?: string;
+  roundOff?: string;
   vatAmount: string;
   grandTotal: string;
   prescriptionNote: string | null;
@@ -152,7 +166,7 @@ function emptyLine(): LineItemForm {
 }
 
 function emptyDiscount(): DiscountRowForm {
-  return { id: crypto.randomUUID(), amount: "", type: "Percentage" };
+  return { id: crypto.randomUUID(), category: "Discount", amount: "", type: "Percentage" };
 }
 
 function emptyForm(): SaleForm {
@@ -178,8 +192,74 @@ function subtotalOf(items: LineItemForm[]) {
 function discountValue(d: DiscountRowForm, subtotal: number) {
   return d.type === "Percentage" ? (subtotal * n(d.amount)) / 100 : n(d.amount);
 }
-function totalDiscountOf(discounts: DiscountRowForm[], subtotal: number) {
-  return discounts.reduce((s, d) => s + discountValue(d, subtotal), 0);
+function calculateAdjustmentsBreakdown(
+  discounts: DiscountRowForm[],
+  subtotal: number,
+  vatEstimate: number
+) {
+  let discountTotal = 0;
+  let freightTotal = 0;
+  let vatRefundTotal = 0;
+
+  for (const d of discounts) {
+    const val = discountValue(d, subtotal);
+    switch (d.category) {
+      case "Freight and forwarding charges":
+        freightTotal += val;
+        break;
+      case "VAT refund":
+        vatRefundTotal += val;
+        break;
+      case "Discount":
+        discountTotal += val;
+        break;
+      default:
+        break;
+    }
+  }
+
+  // Base raw total before rounding adjustments
+  const baseBeforeRound = subtotal - discountTotal - vatRefundTotal + freightTotal + vatEstimate;
+
+  const roundPlusRow = discounts.find((d) => d.category === "Rounded off (+)");
+  const roundMinusRow = discounts.find((d) => d.category === "Rounded off (-)");
+
+  let roundOffMinusTotal = 0;
+  let roundOffPlusTotal = 0;
+  let effectiveRoundingDirection: RoundingDirection = "DOWN";
+
+  if (roundPlusRow) {
+    effectiveRoundingDirection = "UP";
+    if (roundPlusRow.amount !== "" && n(roundPlusRow.amount) > 0) {
+      roundOffPlusTotal = discountValue(roundPlusRow, subtotal);
+    } else {
+      const ceilDiff = Math.ceil(baseBeforeRound) - baseBeforeRound;
+      roundOffPlusTotal = Number(ceilDiff.toFixed(2));
+    }
+  } else if (roundMinusRow) {
+    effectiveRoundingDirection = "DOWN";
+    if (roundMinusRow.amount !== "" && n(roundMinusRow.amount) > 0) {
+      roundOffMinusTotal = discountValue(roundMinusRow, subtotal);
+    } else {
+      const floorDiff = baseBeforeRound - Math.floor(baseBeforeRound);
+      roundOffMinusTotal = Number(floorDiff.toFixed(2));
+    }
+  }
+
+  const netDeductions = discountTotal + vatRefundTotal + roundOffMinusTotal;
+  const netAdditions = freightTotal + roundOffPlusTotal;
+
+  return {
+    discountTotal,
+    freightTotal,
+    roundOffMinusTotal,
+    roundOffPlusTotal,
+    vatRefundTotal,
+    netDeductions,
+    netAdditions,
+    effectiveRoundingDirection,
+    netDiscountForBackend: Math.max(0, netDeductions - netAdditions),
+  };
 }
 function estimateVat(items: LineItemForm[], vatRate: Num) {
   const rate = n(vatRate);
@@ -220,7 +300,7 @@ function Field({ label, hint, span, children }: { label: string; hint?: string; 
 }
 
 /* ------------------------------------------------------------------ */
-/* Customer combobox — mirrors the original, but calls real APIs        */
+/* Customer combobox                                                    */
 /* ------------------------------------------------------------------ */
 
 function CustomerCombobox({
@@ -228,17 +308,16 @@ function CustomerCombobox({
   selectedId,
   selectedName,
   onSelectCustomer,
-  onAutoAddCustomer,
+  onStartNewCustomer,
 }: {
   customers: Customer[];
   selectedId: string;
   selectedName: string;
   onSelectCustomer: (customer: Customer | null) => void;
-  onAutoAddCustomer: (name: string) => Promise<Customer | null>;
+  onStartNewCustomer: (name?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [adding, setAdding] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -251,24 +330,13 @@ function CustomerCombobox({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const activeCustomers = customers.filter((c) => Boolean(c.status));
+
   const filtered = query.trim()
-    ? customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || (c.phone ?? "").includes(query))
-    : customers;
+    ? activeCustomers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || (c.phone ?? "").includes(query))
+    : activeCustomers;
 
-  const exactMatch = customers.some((c) => c.name.toLowerCase() === query.trim().toLowerCase());
-
-  async function handleAutoAdd(nameToCreate: string) {
-    const trimmed = nameToCreate.trim();
-    if (!trimmed || adding) return;
-    setAdding(true);
-    const newCustomer = await onAutoAddCustomer(trimmed);
-    setAdding(false);
-    if (newCustomer) {
-      onSelectCustomer(newCustomer);
-      setQuery("");
-      setOpen(false);
-    }
-  }
+  const exactMatch = activeCustomers.some((c) => c.name.toLowerCase() === query.trim().toLowerCase());
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -278,12 +346,12 @@ function CustomerCombobox({
           value={open ? query : selectedName}
           onChange={(e) => { setQuery(e.target.value); if (!open) setOpen(true); }}
           onFocus={() => { setQuery(selectedName); setOpen(true); }}
-          placeholder="Search or type customer name (optional)..."
+          placeholder="Search or select customer..."
           className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 transition-all placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
         />
         <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
         {selectedName ? (
-          <button type="button" onClick={() => { onSelectCustomer(null); setQuery(""); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded">
+          <button type="button" onClick={() => { onSelectCustomer(null); setQuery(""); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded" title="Clear selection">
             <X className="h-3.5 w-3.5" />
           </button>
         ) : (
@@ -301,33 +369,48 @@ function CustomerCombobox({
             <span className="text-[10px] text-slate-400 italic">No account needed</span>
           </div>
 
-          {query.trim().length > 0 && !exactMatch && (
-            <div
-              onClick={() => handleAutoAdd(query)}
-              className="flex items-center gap-2 border-b border-emerald-100 bg-emerald-50/60 px-3.5 py-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 cursor-pointer transition-colors"
-            >
+          {/* Add new customer button / option */}
+          <div
+            onClick={() => {
+              onStartNewCustomer(query.trim());
+              setOpen(false);
+            }}
+            className="flex items-center justify-between border-b border-emerald-100 bg-emerald-50/70 px-3.5 py-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100/80 cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2">
               <UserPlus className="h-4 w-4 text-emerald-600" />
-              <span>{adding ? "Adding..." : <>Add <strong>&ldquo;{query.trim()}&rdquo;</strong> as new customer</>}</span>
+              <span>
+                {query.trim().length > 0 && !exactMatch ? (
+                  <>Add <strong>&ldquo;{query.trim()}&rdquo;</strong> with details...</>
+                ) : (
+                  <>+ Add New Customer</>
+                )}
+              </span>
             </div>
-          )}
+            <span className="text-[10px] text-emerald-700 font-normal">Phone, email, address</span>
+          </div>
 
           {filtered.length === 0 && !query.trim() ? (
-            <p className="p-3 text-center text-xs text-slate-400">No customers registered yet.</p>
+            <p className="p-3 text-center text-xs text-slate-400">No active customers registered yet.</p>
+          ) : filtered.length === 0 && query.trim() ? (
+            <p className="p-3 text-center text-xs text-slate-400">No matching customers found.</p>
           ) : (
             <div className="py-1">
               {filtered.map((c) => (
                 <div
                   key={c.id}
                   onClick={() => { onSelectCustomer(c); setOpen(false); setQuery(""); }}
-                  className={`flex items-center justify-between px-3.5 py-2 text-left text-xs hover:bg-slate-50 cursor-pointer transition-colors ${
-                    selectedId === c.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
-                  }`}
+                  className={`flex items-center justify-between px-3.5 py-2 text-left text-xs hover:bg-slate-50 cursor-pointer transition-colors ${selectedId === c.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
+                    }`}
                 >
-                  <div>
-                    <p className="font-medium text-slate-800">{c.name}</p>
-                    <p className="text-[10px] text-slate-400">{c.phone ? `Ph: ${c.phone}` : "No phone"}</p>
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-800 truncate">{c.name}</p>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 truncate">
+                      {c.phone ? <span>Ph: {c.phone}</span> : <span>No phone</span>}
+                      {c.address && <span>• {c.address}</span>}
+                    </div>
                   </div>
-                  {selectedId === c.id && <Check className="h-4 w-4 text-[#044d73]" />}
+                  {selectedId === c.id && <Check className="h-4 w-4 text-[#044d73] shrink-0" />}
                 </div>
               ))}
             </div>
@@ -384,9 +467,8 @@ function ItemPicker({ products, value, onSelect }: { products: Product[]; value:
         ref={buttonRef}
         type="button"
         onClick={toggleOpen}
-        className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${
-          open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
-        }`}
+        className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
+          }`}
       >
         <span className={`truncate ${selected ? "font-semibold text-slate-800" : "text-slate-400"}`}>
           {selected ? selected.name : "Select item to sell..."}
@@ -414,9 +496,8 @@ function ItemPicker({ products, value, onSelect }: { products: Product[]; value:
                     key={p.id}
                     type="button"
                     onClick={() => { onSelect(p); setOpen(false); setQuery(""); }}
-                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${
-                      selected?.id === p.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
-                    }`}
+                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${selected?.id === p.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
+                      }`}
                   >
                     <div className="min-w-0">
                       <p className="truncate text-xs font-semibold">{p.name}</p>
@@ -596,28 +677,63 @@ export default function SalesPage() {
 
   const filteredSales = search
     ? sales.filter((s) => {
-        const q = search.toLowerCase();
-        return (
-          invoiceLabel(s.invoiceNumber).toLowerCase().includes(q) ||
-          (s.customer?.name ?? "").toLowerCase().includes(q) ||
-          (s.prescriptionNote ?? "").toLowerCase().includes(q)
-        );
-      })
+      const q = search.toLowerCase();
+      return (
+        invoiceLabel(s.invoiceNumber).toLowerCase().includes(q) ||
+        (s.customer?.name ?? "").toLowerCase().includes(q) ||
+        (s.prescriptionNote ?? "").toLowerCase().includes(q)
+      );
+    })
     : sales;
 
   const visibleSales = paymentFilter === "ALL" ? filteredSales : filteredSales.filter((s) => s.paymentType === paymentFilter);
 
-  /* ---- customer auto-add ---- */
+  const [showNewCustomerInline, setShowNewCustomerInline] = useState(false);
+  const [inlineCust, setInlineCust] = useState({ name: "", phone: "", email: "", address: "" });
+  const [savingInlineCust, setSavingInlineCust] = useState(false);
+  const [inlineCustError, setInlineCustError] = useState<string | null>(null);
 
-  async function handleAutoAddCustomer(name: string): Promise<Customer | null> {
-    try {
-      const res = await api.post("/api/customers", { name: name.trim() });
-      const created: Customer = res.data.customer;
-      setCustomers((prev) => [...prev, created]);
-      return created;
-    } catch {
-      return null;
+  async function handleSaveInlineCustomer() {
+    if (!inlineCust.name.trim()) {
+      setInlineCustError("Customer name is required.");
+      return;
     }
+    setSavingInlineCust(true);
+    setInlineCustError(null);
+
+    const payload: { name: string; phone?: string; email?: string; address?: string } = {
+      name: inlineCust.name.trim(),
+    };
+    if (inlineCust.phone.trim()) payload.phone = inlineCust.phone.trim();
+    if (inlineCust.email.trim()) payload.email = inlineCust.email.trim();
+    if (inlineCust.address.trim()) payload.address = inlineCust.address.trim();
+
+    try {
+      const res = await api.post("/api/customers", payload);
+      const created: Customer = res.data.customer;
+      setCustomers((prev) => [created, ...prev]);
+      setForm((p) => ({
+        ...p,
+        customerId: created.id,
+        customerName: created.name,
+      }));
+      setShowNewCustomerInline(false);
+      setInlineCust({ name: "", phone: "", email: "", address: "" });
+    } catch (err: any) {
+      setInlineCustError(
+        err?.response?.data?.details?.fieldErrors?.email?.[0] ||
+        err?.response?.data?.error ||
+        "Failed to create customer."
+      );
+    } finally {
+      setSavingInlineCust(false);
+    }
+  }
+
+  function handleStartNewCustomerInline(initialName: string = "") {
+    setInlineCust({ name: initialName, phone: "", email: "", address: "" });
+    setInlineCustError(null);
+    setShowNewCustomerInline(true);
   }
 
   /* ---- sale modal ---- */
@@ -626,6 +742,9 @@ export default function SalesPage() {
     setEditingSaleId(null);
     setForm(emptyForm());
     setSaveError(null);
+    setShowNewCustomerInline(false);
+    setInlineCust({ name: "", phone: "", email: "", address: "" });
+    setInlineCustError(null);
     setIsModalOpen(true);
   }
 
@@ -656,7 +775,22 @@ export default function SalesPage() {
       customerId: record.customer?.id ?? "",
       customerName: record.customer?.name ?? "",
       prescriptionNote: record.prescriptionNote ?? "",
-      discounts: Number(record.discount) > 0 ? [{ id: crypto.randomUUID(), amount: Number(record.discount), type: "Flat" }] : [],
+      discounts: [
+        ...(Number(record.discount) > 0
+          ? [{ id: crypto.randomUUID(), category: "Discount" as const, amount: Number(record.discount), type: "Flat" as const }]
+          : []),
+        ...(Number(record.freightCharges) > 0
+          ? [{ id: crypto.randomUUID(), category: "Freight and forwarding charges" as const, amount: Number(record.freightCharges), type: "Flat" as const }]
+          : []),
+        ...(Number(record.vatRefund) > 0
+          ? [{ id: crypto.randomUUID(), category: "VAT refund" as const, amount: Number(record.vatRefund), type: "Flat" as const }]
+          : []),
+        ...(Number(record.roundOff) < 0
+          ? [{ id: crypto.randomUUID(), category: "Rounded off (-)" as const, amount: Math.abs(Number(record.roundOff)), type: "Flat" as const }]
+          : Number(record.roundOff) > 0
+            ? [{ id: crypto.randomUUID(), category: "Rounded off (+)" as const, amount: Number(record.roundOff), type: "Flat" as const }]
+            : []),
+      ],
       items: record.items.map((it) => {
         const product = products.find((p) => p.id === it.productId);
         const batches = batchesByProduct.get(it.productId) ?? [];
@@ -685,6 +819,9 @@ export default function SalesPage() {
     setIsModalOpen(false);
     setEditingSaleId(null);
     setSaveError(null);
+    setShowNewCustomerInline(false);
+    setInlineCust({ name: "", phone: "", email: "", address: "" });
+    setInlineCustError(null);
   }
 
   function updateLine(id: string, patch: Partial<LineItemForm>) {
@@ -738,7 +875,26 @@ export default function SalesPage() {
     setForm((p) => ({ ...p, discounts: p.discounts.filter((d) => d.id !== id) }));
   }
   function updateDiscount(id: string, patch: Partial<DiscountRowForm>) {
-    setForm((p) => ({ ...p, discounts: p.discounts.map((d) => (d.id === id ? { ...d, ...patch } : d)) }));
+    setForm((p) => {
+      let nextRounding = p.roundingDirection;
+      if (patch.category === "Rounded off (-)") {
+        nextRounding = "DOWN";
+      } else if (patch.category === "Rounded off (+)") {
+        nextRounding = "UP";
+      }
+      return {
+        ...p,
+        roundingDirection: nextRounding,
+        discounts: p.discounts.map((d) => {
+          if (d.id !== id) return d;
+          const updated = { ...d, ...patch };
+          if (patch.category === "Rounded off (-)" || patch.category === "Rounded off (+)") {
+            updated.type = "Flat";
+          }
+          return updated;
+        }),
+      };
+    });
   }
 
   /* ---- validation ---- */
@@ -746,27 +902,47 @@ export default function SalesPage() {
   const validItems = form.items.filter((li) => li.productId && li.batchId && n(li.qty) > 0);
   const missingBatch = form.items.some((li) => li.productId && n(li.qty) > 0 && !li.batchId);
   const hasExceededBatchStock = form.items.some(
-    (li) => li.batchId && n(li.qty) > 0 && li.batchStock > 0 && n(li.qty) > li.batchStock
+    (li) => li.batchId && n(li.qty) > 0 && (li.batchStock <= 0 || n(li.qty) > li.batchStock)
   );
 
   const subtotal = subtotalOf(form.items);
-  const discountTotal = totalDiscountOf(form.discounts, subtotal);
   const vatEstimate = estimateVat(form.items, form.vatRate);
-  const rawTotalEstimate = subtotal - discountTotal + vatEstimate;
-  const grandTotalEstimate = form.roundingDirection === "UP" ? Math.ceil(rawTotalEstimate) : Math.floor(rawTotalEstimate);
+  const adjustments = calculateAdjustmentsBreakdown(form.discounts, subtotal, vatEstimate);
+  const hasRoundingAdjustment = form.discounts.some(
+    (d) => d.category === "Rounded off (-)" || d.category === "Rounded off (+)"
+  );
+  const rawTotalEstimate =
+    subtotal -
+    adjustments.discountTotal -
+    adjustments.vatRefundTotal -
+    adjustments.roundOffMinusTotal +
+    adjustments.freightTotal +
+    adjustments.roundOffPlusTotal +
+    vatEstimate;
+  const grandTotalEstimate = hasRoundingAdjustment
+    ? (adjustments.effectiveRoundingDirection === "UP"
+      ? Math.ceil(rawTotalEstimate)
+      : Math.floor(rawTotalEstimate))
+    : rawTotalEstimate;
 
   function buildPayload() {
-    // Multiple discount rows collapse into one flat Rs. amount, same pattern
-    // used on the purchase page — the backend only accepts a single `discount`.
-    const resolvedDiscount = totalDiscountOf(form.discounts, subtotal);
+    const roundOffValue =
+      adjustments.roundOffPlusTotal > 0
+        ? adjustments.roundOffPlusTotal
+        : adjustments.roundOffMinusTotal > 0
+          ? -adjustments.roundOffMinusTotal
+          : 0;
 
     return {
       customerId: form.customerId || undefined,
       saleDate: form.date,
       paymentType: form.paymentType,
       vatRate: n(form.vatRate),
-      discount: resolvedDiscount,
-      roundingDirection: form.roundingDirection,
+      discount: adjustments.discountTotal,
+      freightCharges: adjustments.freightTotal,
+      vatRefund: adjustments.vatRefundTotal,
+      roundOff: roundOffValue,
+      roundingDirection: adjustments.effectiveRoundingDirection,
       prescriptionNote: form.prescriptionNote.trim() || undefined,
       items: validItems.map((li) => ({
         productId: li.productId,
@@ -808,7 +984,7 @@ export default function SalesPage() {
 
       closeModal();
       // Refresh product stock in the background — a sale always changes stockQuantity.
-      api.get("/api/product").then((r) => setProducts(r.data.products)).catch(() => {});
+      api.get("/api/product").then((r) => setProducts(r.data.products)).catch(() => { });
     } catch (err: any) {
       setSaveError(err?.response?.data?.error ?? "Failed to save sale.");
     } finally {
@@ -830,7 +1006,7 @@ export default function SalesPage() {
       });
       if (sales.length === 1 && currentPage > 1) setCurrentPage((p) => p - 1);
       setDeleteConfirmId(null);
-      api.get("/api/product").then((r) => setProducts(r.data.products)).catch(() => {});
+      api.get("/api/product").then((r) => setProducts(r.data.products)).catch(() => { });
     } catch (err: any) {
       setDeleteError(err?.response?.data?.error ?? "Failed to delete sale.");
     } finally {
@@ -953,9 +1129,8 @@ export default function SalesPage() {
                     <td className="py-3 px-4 text-slate-500">{s.saleDate.slice(0, 10)}</td>
                     <td className="py-3 px-4 font-semibold text-slate-800 group-hover:text-[#044d73] transition-colors">{invoiceLabel(s.invoiceNumber)}</td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold border ${
-                        s.paymentType === "CASH" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"
-                      }`}>
+                      <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold border ${s.paymentType === "CASH" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"
+                        }`}>
                         {s.paymentType === "CASH" ? "Cash" : "Credit"}
                       </span>
                     </td>
@@ -1056,9 +1231,8 @@ export default function SalesPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-semibold">{invoiceLabel(viewingSale.invoiceNumber)}</h3>
-                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold border ${
-                      viewingSale.paymentType === "CASH" ? "bg-emerald-400/20 border-emerald-300 text-emerald-100" : "bg-amber-400/20 border-amber-300 text-amber-100"
-                    }`}>
+                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold border ${viewingSale.paymentType === "CASH" ? "bg-emerald-400/20 border-emerald-300 text-emerald-100" : "bg-amber-400/20 border-amber-300 text-amber-100"
+                      }`}>
                       {viewingSale.paymentType === "CASH" ? "Cash" : "Credit"}
                     </span>
                   </div>
@@ -1142,9 +1316,25 @@ export default function SalesPage() {
 
               <div className="ml-auto w-full max-w-xs space-y-1.5 rounded-xl bg-slate-50 p-4 border border-slate-200">
                 <div className="flex justify-between text-xs text-slate-500"><span>Subtotal</span><span>{rs(Number(viewingSale.subtotal))}</span></div>
-                <div className="flex justify-between text-xs text-slate-500"><span>Discount</span><span>- {rs(Number(viewingSale.discount))}</span></div>
-                <div className="flex justify-between text-xs text-slate-500"><span>VAT</span><span>{rs(Number(viewingSale.vatAmount))}</span></div>
-                <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold text-slate-800"><span>Grand Total</span><span>{rs(Number(viewingSale.grandTotal))}</span></div>
+                {Number(viewingSale.discount) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500"><span>Discount</span><span>- {rs(Number(viewingSale.discount))}</span></div>
+                )}
+                {Number(viewingSale.freightCharges) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500"><span>Freight & Forwarding</span><span>+ {rs(Number(viewingSale.freightCharges))}</span></div>
+                )}
+                {Number(viewingSale.vatRefund) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500"><span>VAT Refund</span><span>- {rs(Number(viewingSale.vatRefund))}</span></div>
+                )}
+                {Number(viewingSale.roundOff) < 0 && (
+                  <div className="flex justify-between text-xs text-slate-500"><span>Rounded Off (−)</span><span>- {rs(Math.abs(Number(viewingSale.roundOff)))}</span></div>
+                )}
+                {Number(viewingSale.roundOff) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500"><span>Rounded Off (+)</span><span>+ {rs(Number(viewingSale.roundOff))}</span></div>
+                )}
+                {Number(viewingSale.vatAmount) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500"><span>VAT</span><span>{rs(Number(viewingSale.vatAmount))}</span></div>
+                )}
+                <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold text-slate-800"><span>Grand Total</span><span className="text-[#044d73]">{rs(Number(viewingSale.grandTotal))}</span></div>
               </div>
             </div>
 
@@ -1178,7 +1368,7 @@ export default function SalesPage() {
                 {saveError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600 font-medium">{saveError}</div>}
 
                 <Section title="Voucher & Customer" icon={<ShoppingCart className="w-3.5 h-3.5" />}>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <Field label="Date">
                       <input type="date" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} className={inputCls} />
                     </Field>
@@ -1191,22 +1381,152 @@ export default function SalesPage() {
                     <Field label="VAT Rate (%)">
                       <input type="number" min={0} max={100} step="0.01" value={form.vatRate} onChange={(e) => setForm((p) => ({ ...p, vatRate: e.target.value === "" ? "" : Number(e.target.value) }))} className={inputCls} />
                     </Field>
-                    <Field label="Rounding">
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setForm((p) => ({ ...p, roundingDirection: "DOWN" }))} className={`flex-1 rounded-lg border px-2 py-2 text-xs font-semibold ${form.roundingDirection === "DOWN" ? "border-[#044d73] bg-[#044d73] text-white" : "border-slate-200 bg-white text-slate-600"}`}>Down (−)</button>
-                        <button type="button" onClick={() => setForm((p) => ({ ...p, roundingDirection: "UP" }))} className={`flex-1 rounded-lg border px-2 py-2 text-xs font-semibold ${form.roundingDirection === "UP" ? "border-[#044d73] bg-[#044d73] text-white" : "border-slate-200 bg-white text-slate-600"}`}>Up (+)</button>
-                      </div>
-                    </Field>
 
-                    <div className="sm:col-span-4">
-                      <label className={labelCls}>Customer</label>
-                      <CustomerCombobox
-                        customers={customers}
-                        selectedId={form.customerId}
-                        selectedName={form.customerName}
-                        onSelectCustomer={(cust) => setForm((p) => ({ ...p, customerId: cust ? cust.id : "", customerName: cust ? cust.name : "" }))}
-                        onAutoAddCustomer={handleAutoAddCustomer}
-                      />
+                    <div className="sm:col-span-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={labelCls}>Customer</label>
+                        {!showNewCustomerInline ? (
+                          <button
+                            type="button"
+                            onClick={() => handleStartNewCustomerInline("")}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#044d73] hover:text-[#033b59] hover:underline cursor-pointer"
+                          >
+                            <UserPlus className="h-3.5 w-3.5" />
+                            <span>+ New Customer</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowNewCustomerInline(false);
+                              setInlineCustError(null);
+                            }}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                          >
+                            <span>Back to customer search</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {showNewCustomerInline ? (
+                        <div className="rounded-xl border border-[#044d73]/25 bg-slate-50/80 p-4 space-y-3.5 animate-in fade-in duration-150">
+                          <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
+                            <div className="flex items-center gap-2 text-xs font-bold text-[#044d73]">
+                              <UserPlus className="w-4 h-4" />
+                              <span>Add New Customer Details</span>
+                            </div>
+                            <span className="text-[11px] text-slate-400">Saved to customer catalog</span>
+                          </div>
+
+                          {inlineCustError && (
+                            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-medium">
+                              {inlineCustError}
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Customer Name <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                autoFocus
+                                type="text"
+                                value={inlineCust.name}
+                                onChange={(e) => setInlineCust((p) => ({ ...p, name: e.target.value }))}
+                                placeholder="e.g. Ram Bahadur"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Phone Number
+                              </label>
+                              <input
+                                type="tel"
+                                value={inlineCust.phone}
+                                onChange={(e) => setInlineCust((p) => ({ ...p, phone: e.target.value }))}
+                                placeholder="e.g. 9841234567"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Email (optional)
+                              </label>
+                              <input
+                                type="email"
+                                value={inlineCust.email}
+                                onChange={(e) => setInlineCust((p) => ({ ...p, email: e.target.value }))}
+                                placeholder="e.g. ram@example.com"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Address (optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={inlineCust.address}
+                                onChange={(e) => setInlineCust((p) => ({ ...p, address: e.target.value }))}
+                                placeholder="e.g. Kathmandu"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/80">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowNewCustomerInline(false);
+                                setInlineCustError(null);
+                              }}
+                              className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingInlineCust || !inlineCust.name.trim()}
+                              onClick={handleSaveInlineCustomer}
+                              className="px-4 py-1.5 text-xs font-semibold text-white bg-[#044d73] hover:bg-[#033f60] rounded-lg shadow-sm transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                              {savingInlineCust ? "Saving..." : "Save Customer"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <CustomerCombobox
+                            customers={customers}
+                            selectedId={form.customerId}
+                            selectedName={form.customerName}
+                            onSelectCustomer={(cust) => setForm((p) => ({ ...p, customerId: cust ? cust.id : "", customerName: cust ? cust.name : "" }))}
+                            onStartNewCustomer={handleStartNewCustomerInline}
+                          />
+                          {form.customerId && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[11px] text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                              {(() => {
+                                const c = customers.find((x) => x.id === form.customerId);
+                                if (!c) return null;
+                                return (
+                                  <>
+                                    <span className="font-semibold text-slate-700">{c.name}</span>
+                                    {c.phone && <span className="text-slate-600">📞 {c.phone}</span>}
+                                    {c.email && <span className="text-slate-600">✉️ {c.email}</span>}
+                                    {c.address && <span className="text-slate-600">📍 {c.address}</span>}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </Section>
@@ -1229,7 +1549,7 @@ export default function SalesPage() {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {form.items.map((line, idx) => {
-                            const exceedsStock = !!line.batchId && n(line.qty) > 0 && line.batchStock > 0 && n(line.qty) > line.batchStock;
+                            const exceedsStock = !!line.batchId && n(line.qty) > 0 && (line.batchStock <= 0 || n(line.qty) > line.batchStock);
 
                             return (
                               <tr key={line.id} className={`transition-colors ${exceedsStock ? "bg-red-50/40" : "hover:bg-slate-50/50"}`}>
@@ -1254,16 +1574,19 @@ export default function SalesPage() {
                                   <input
                                     type="number"
                                     min={1}
-                                    max={line.batchStock || undefined}
+                                    max={line.batchStock > 0 ? line.batchStock : undefined}
                                     step="1"
                                     placeholder="0"
                                     value={line.qty}
                                     onChange={(e) => updateLine(line.id, { qty: e.target.value === "" ? "" : Number(e.target.value) })}
-                                    className={`h-9 w-full rounded-lg border px-2.5 text-xs text-slate-700 focus:outline-none focus:ring-1 ${
-                                      exceedsStock ? "border-red-400 bg-red-50/50 focus:border-red-500 focus:ring-red-500" : "border-slate-200 bg-white focus:border-[#044d73] focus:ring-[#044d73]"
-                                    }`}
+                                    className={`h-9 w-full rounded-lg border px-2.5 text-xs text-slate-700 focus:outline-none focus:ring-1 ${exceedsStock ? "border-red-400 bg-red-50/50 focus:border-red-500 focus:ring-red-500" : "border-slate-200 bg-white focus:border-[#044d73] focus:ring-[#044d73]"
+                                      }`}
                                   />
-                                  {exceedsStock && <span className="text-[10px] text-red-600 font-bold block mt-0.5">Max: {line.batchStock}</span>}
+                                  {exceedsStock && (
+                                    <span className="text-[10px] text-red-600 font-bold block mt-0.5">
+                                      {line.batchStock <= 0 ? "Out of stock" : `Max: ${line.batchStock}`}
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="py-3 px-2 text-center">
                                   <span className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-[11px] font-semibold text-slate-600">{line.unit || "—"}</span>
@@ -1313,59 +1636,87 @@ export default function SalesPage() {
                   {hasExceededBatchStock && (
                     <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 p-2.5 px-3 text-xs text-red-700">
                       <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-                      <span>One or more item quantities exceed the selected batch stock. Please adjust quantity.</span>
+                      <span>One or more items exceed batch stock or are out of stock. Please adjust quantity or select another batch.</span>
                     </div>
                   )}
                 </Section>
 
                 <Section
-                  title="Discounts"
+                  title="Discounts & Charges"
                   icon={<Percent className="w-3.5 h-3.5" />}
                   action={
                     <button type="button" onClick={addDiscount} className="flex items-center gap-1.5 text-xs font-semibold text-[#044d73] hover:underline">
-                      <Plus className="w-3.5 h-3.5" /> Add Discount
+                      <Plus className="w-3.5 h-3.5" /> Add Discount / Charge
                     </button>
                   }
                 >
                   {form.discounts.length === 0 ? (
-                    <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs text-slate-400">No discount applied to this sale.</p>
+                    <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs text-slate-400">No discount or charges applied to this sale.</p>
                   ) : (
                     <div className="overflow-x-auto rounded-lg border border-slate-200">
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="bg-slate-50/70 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                            <th className="py-2.5 px-3 w-10">S.N</th>
-                            <th className="py-2.5 px-3">Amount</th>
-                            <th className="py-2.5 px-3">Discount Type</th>
-                            <th className="py-2.5 px-3 w-10"></th>
+                            <th className="py-2.5 px-3 w-10 text-center">S.N</th>
+                            <th className="py-2.5 px-3 min-w-[210px]">Adjustment / Charge Type</th>
+                            <th className="py-2.5 px-3 min-w-[110px]">Amount</th>
+                            <th className="py-2.5 px-3 min-w-[120px]">Type</th>
+                            <th className="py-2.5 px-3 w-10 text-center"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {form.discounts.map((d, idx) => (
                             <tr key={d.id}>
-                              <td className="py-2 px-3 text-slate-500">{idx + 1}</td>
+                              <td className="py-2 px-3 text-center text-slate-500 font-medium">{idx + 1}</td>
+                              <td className="py-2 px-3">
+                                <select
+                                  value={d.category || "Discount"}
+                                  onChange={(e) => updateDiscount(d.id, { category: e.target.value as AdjustmentCategory })}
+                                  className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs sm:text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                                >
+                                  <option value="Discount">Discount</option>
+                                  <option value="Freight and forwarding charges">Freight and forwarding charges</option>
+                                  <option value="Rounded off (-)">Rounded off (-)</option>
+                                  <option value="Rounded off (+)">Rounded off (+)</option>
+                                  <option value="VAT refund">VAT refund</option>
+                                </select>
+                              </td>
                               <td className="py-2 px-3">
                                 <input
                                   type="number"
                                   min={0}
                                   step="0.01"
                                   value={d.amount}
-                                  placeholder={d.type === "Percentage" ? "%" : "Rs."}
+                                  placeholder={
+                                    d.category === "Rounded off (-)"
+                                      ? `Auto (${adjustments.roundOffMinusTotal.toFixed(2)})`
+                                      : d.category === "Rounded off (+)"
+                                        ? `Auto (${adjustments.roundOffPlusTotal.toFixed(2)})`
+                                        : d.type === "Percentage"
+                                          ? "%"
+                                          : "Rs."
+                                  }
                                   onChange={(e) => updateDiscount(d.id, { amount: e.target.value === "" ? "" : Number(e.target.value) })}
                                   className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                                 />
                               </td>
                               <td className="py-2 px-3">
-                                <select
-                                  value={d.type}
-                                  onChange={(e) => updateDiscount(d.id, { type: e.target.value as DiscountType })}
-                                  className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
-                                >
-                                  <option value="Percentage">Percentage (%)</option>
-                                  <option value="Flat">Flat (Rs.)</option>
-                                </select>
+                                {d.category === "Rounded off (-)" || d.category === "Rounded off (+)" ? (
+                                  <div className="w-full rounded-md border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs font-medium text-slate-500">
+                                    Flat (Rs.)
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={d.type}
+                                    onChange={(e) => updateDiscount(d.id, { type: e.target.value as DiscountType })}
+                                    className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                                  >
+                                    <option value="Percentage">Percentage (%)</option>
+                                    <option value="Flat">Flat (Rs.)</option>
+                                  </select>
+                                )}
                               </td>
-                              <td className="py-2 px-3">
+                              <td className="py-2 px-3 text-center">
                                 <button type="button" onClick={() => removeDiscount(d.id)} className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1392,7 +1743,21 @@ export default function SalesPage() {
 
                   <div className="space-y-1.5 rounded-xl bg-slate-50 p-4 border border-slate-200">
                     <div className="flex justify-between text-xs sm:text-sm text-slate-500"><span>Subtotal</span><span>{rs(subtotal)}</span></div>
-                    <div className="flex justify-between text-xs sm:text-sm text-slate-500"><span>Discount</span><span>- {rs(discountTotal)}</span></div>
+                    {adjustments.discountTotal > 0 && (
+                      <div className="flex justify-between text-xs sm:text-sm text-slate-500"><span>Discount</span><span>- {rs(adjustments.discountTotal)}</span></div>
+                    )}
+                    {adjustments.freightTotal > 0 && (
+                      <div className="flex justify-between text-xs sm:text-sm text-slate-500"><span>Freight & Forwarding</span><span>+ {rs(adjustments.freightTotal)}</span></div>
+                    )}
+                    {adjustments.vatRefundTotal > 0 && (
+                      <div className="flex justify-between text-xs sm:text-sm text-slate-500"><span>VAT Refund</span><span>- {rs(adjustments.vatRefundTotal)}</span></div>
+                    )}
+                    {adjustments.roundOffMinusTotal > 0 && (
+                      <div className="flex justify-between text-xs sm:text-sm text-slate-500"><span>Rounded Off (−)</span><span>- {rs(adjustments.roundOffMinusTotal)}</span></div>
+                    )}
+                    {adjustments.roundOffPlusTotal > 0 && (
+                      <div className="flex justify-between text-xs sm:text-sm text-slate-500"><span>Rounded Off (+)</span><span>+ {rs(adjustments.roundOffPlusTotal)}</span></div>
+                    )}
                     <div className="flex justify-between text-xs sm:text-sm text-slate-500"><span>VAT (estimate)</span><span>{rs(vatEstimate)}</span></div>
                     <div className="flex justify-between border-t border-slate-200 pt-2 text-sm sm:text-base font-bold text-slate-800"><span>Grand Total (estimate)</span><span className="text-[#044d73]">{rs(grandTotalEstimate)}</span></div>
                     <p className="text-[10px] text-slate-400 pt-1">Final totals are calculated by the server on save.</p>

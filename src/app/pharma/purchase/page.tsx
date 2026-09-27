@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect, Fragment, useCallback } from "rea
 import {
   Plus, X, Pencil, Trash2, Search, ChevronDown, ChevronLeft, ChevronRight,
   Receipt, Wallet, CreditCard, Banknote, PackagePlus, Percent, Boxes, Check,
-  AlertCircle,
+  AlertCircle, Calendar, RotateCcw,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
@@ -39,9 +39,10 @@ interface Product {
 interface Supplier {
   id: string;
   name: string;
-  contactPerson: string | null;
-  phone: string | null;
-  paymentTerms: string | null;
+  contactPerson?: string | null;
+  phone?: string | null;
+  paymentTerms?: string | null;
+  status?: boolean;
 }
 
 interface BatchDetails {
@@ -67,6 +68,20 @@ interface LineItemForm {
   batch: BatchDetails | null;
 }
 
+export type AdjustmentCategory =
+  | "Discount"
+  | "Freight and forwarding charges"
+  | "Rounded off (-)"
+  | "Rounded off (+)"
+  | "VAT refund";
+
+interface DiscountRowForm {
+  id: string;
+  category: AdjustmentCategory;
+  amount: Num;
+  type: DiscountType;
+}
+
 interface PurchaseForm {
   date: string;
   supplierInvoiceNumber: string;
@@ -76,10 +91,7 @@ interface PurchaseForm {
   supplierId: string;
   supplierName: string;
   items: LineItemForm[];
-  discountAmount: Num;
-  discountType: DiscountType;
-  freightCharges: Num;
-  vatRefund: Num;
+  discounts: DiscountRowForm[];
   roundingDirection: RoundingDirection;
 }
 
@@ -87,6 +99,7 @@ interface PurchaseForm {
 interface PurchaseRecord {
   id: string;
   purchaseDate: string;
+  createdAt?: string;
   supplierInvoiceNumber: string | null;
   paymentType: PaymentType;
   purcType: PurcType;
@@ -96,6 +109,7 @@ interface PurchaseRecord {
   freightCharges: string;
   vatAmount: string;
   vatRefund: string;
+  roundOff?: string;
   grandTotal: string;
   supplier?: Supplier;
   items: Array<{
@@ -139,6 +153,10 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function emptyDiscount(): DiscountRowForm {
+  return { id: crypto.randomUUID(), category: "Discount", amount: "", type: "Flat" };
+}
+
 function emptyForm(): PurchaseForm {
   return {
     date: todayISO(),
@@ -149,10 +167,7 @@ function emptyForm(): PurchaseForm {
     supplierId: "",
     supplierName: "",
     items: [emptyLine()],
-    discountAmount: "",
-    discountType: "Flat",
-    freightCharges: "",
-    vatRefund: "",
+    discounts: [],
     roundingDirection: "DOWN",
   };
 }
@@ -166,8 +181,71 @@ function lineAmount(li: LineItemForm) {
 function subtotalOf(items: LineItemForm[]) {
   return items.reduce((s, li) => s + lineAmount(li), 0);
 }
-function discountValueOf(subtotal: number, amount: Num, type: DiscountType) {
-  return type === "Percentage" ? (subtotal * n(amount)) / 100 : n(amount);
+function discountValue(d: DiscountRowForm, subtotal: number) {
+  return d.type === "Percentage" ? (subtotal * n(d.amount)) / 100 : n(d.amount);
+}
+function calculateAdjustmentsBreakdown(
+  discounts: DiscountRowForm[],
+  subtotal: number,
+  vatEstimate: number
+) {
+  let discountTotal = 0;
+  let freightTotal = 0;
+  let vatRefundTotal = 0;
+
+  for (const d of discounts) {
+    const val = discountValue(d, subtotal);
+    switch (d.category) {
+      case "Freight and forwarding charges":
+        freightTotal += val;
+        break;
+      case "VAT refund":
+        vatRefundTotal += val;
+        break;
+      case "Discount":
+        discountTotal += val;
+        break;
+      default:
+        break;
+    }
+  }
+
+  // Base raw total before rounding adjustments
+  const baseBeforeRound = subtotal - discountTotal + freightTotal + vatEstimate - vatRefundTotal;
+
+  const roundPlusRow = discounts.find((d) => d.category === "Rounded off (+)");
+  const roundMinusRow = discounts.find((d) => d.category === "Rounded off (-)");
+
+  let roundOffMinusTotal = 0;
+  let roundOffPlusTotal = 0;
+  let effectiveRoundingDirection: RoundingDirection = "DOWN";
+
+  if (roundPlusRow) {
+    effectiveRoundingDirection = "UP";
+    if (roundPlusRow.amount !== "" && n(roundPlusRow.amount) > 0) {
+      roundOffPlusTotal = discountValue(roundPlusRow, subtotal);
+    } else {
+      const ceilDiff = Math.ceil(baseBeforeRound) - baseBeforeRound;
+      roundOffPlusTotal = Number(ceilDiff.toFixed(2));
+    }
+  } else if (roundMinusRow) {
+    effectiveRoundingDirection = "DOWN";
+    if (roundMinusRow.amount !== "" && n(roundMinusRow.amount) > 0) {
+      roundOffMinusTotal = discountValue(roundMinusRow, subtotal);
+    } else {
+      const floorDiff = baseBeforeRound - Math.floor(baseBeforeRound);
+      roundOffMinusTotal = Number(floorDiff.toFixed(2));
+    }
+  }
+
+  return {
+    discountTotal,
+    freightTotal,
+    roundOffMinusTotal,
+    roundOffPlusTotal,
+    vatRefundTotal,
+    effectiveRoundingDirection,
+  };
 }
 function estimateVat(items: LineItemForm[], purcType: PurcType, vatRate: Num) {
   const rate = n(vatRate);
@@ -358,7 +436,9 @@ function SupplierPicker({
   const [query, setQuery] = useState("");
 
   const selected = suppliers.find(s => s.id === value) ?? null;
-  const filtered = suppliers.filter(s => s.name.toLowerCase().includes(query.toLowerCase()));
+  const filtered = suppliers
+    .filter(s => Boolean(s.status))
+    .filter(s => s.name.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div className="relative">
@@ -423,13 +503,20 @@ const ITEMS_PER_PAGE = 8;
 
 export default function PurchasePage() {
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: ITEMS_PER_PAGE, total: 0, totalPages: 1 });
 
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [loadingPurchases, setLoadingPurchases] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Search & Filter state
+  const [search, setSearch] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState<string>("ALL");
+  const [purcTypeFilter, setPurcTypeFilter] = useState<string>("ALL");
+  const [supplierFilter, setSupplierFilter] = useState<string>("ALL");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
 
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -467,33 +554,143 @@ export default function PurchasePage() {
     loadCatalog();
   }, []);
 
-  /* ---- purchases list — refetches on page change ---- */
+  /* ---- purchases list — loads purchases for client-side search & filtering ---- */
 
   const loadPurchases = useCallback(async () => {
     setLoadingPurchases(true);
+    setLoadError(null);
     try {
-      const res = await api.get("/api/purchases", { params: { page: currentPage, limit: ITEMS_PER_PAGE } });
-      setPurchases(res.data.purchases);
-      setPagination(res.data.pagination);
+      const firstRes = await api.get("/api/purchases", { params: { page: 1, limit: 100 } });
+      let all: PurchaseRecord[] = firstRes.data.purchases || [];
+      const totalPages = firstRes.data.pagination?.totalPages ?? 1;
+
+      if (totalPages > 1) {
+        const remainingRequests = [];
+        for (let p = 2; p <= totalPages; p++) {
+          remainingRequests.push(api.get("/api/purchases", { params: { page: p, limit: 100 } }));
+        }
+        const restRes = await Promise.all(remainingRequests);
+        for (const r of restRes) {
+          if (r.data.purchases) {
+            all = all.concat(r.data.purchases);
+          }
+        }
+      }
+      setPurchases(all);
     } catch {
       setLoadError("Failed to load purchases.");
     } finally {
       setLoadingPurchases(false);
     }
-  }, [currentPage]);
+  }, []);
 
   useEffect(() => {
     loadPurchases();
   }, [loadPurchases]);
 
-  /* ---- stats — derived from the current page only (no separate aggregate endpoint yet) ---- */
+  /* ---- Filter logic ---- */
+
+  const isFiltered = Boolean(
+    search.trim() ||
+    paymentFilter !== "ALL" ||
+    purcTypeFilter !== "ALL" ||
+    supplierFilter !== "ALL" ||
+    dateFrom ||
+    dateTo
+  );
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setPaymentFilter("ALL");
+    setPurcTypeFilter("ALL");
+    setSupplierFilter("ALL");
+    setDateFrom("");
+    setDateTo("");
+    setCurrentPage(1);
+  };
+
+  const filteredPurchases = useMemo(() => {
+    return purchases.filter((p) => {
+      // 1. Payment filter
+      if (paymentFilter !== "ALL" && p.paymentType !== paymentFilter) {
+        return false;
+      }
+
+      // 2. Purchase type (VAT) filter
+      if (purcTypeFilter !== "ALL" && p.purcType !== purcTypeFilter) {
+        return false;
+      }
+
+      // 3. Supplier filter
+      if (supplierFilter !== "ALL" && p.supplier?.id !== supplierFilter) {
+        return false;
+      }
+
+      // 4. Date range filter
+      const pDate = p.purchaseDate ? p.purchaseDate.slice(0, 10) : "";
+      if (dateFrom && pDate < dateFrom) {
+        return false;
+      }
+      if (dateTo && pDate > dateTo) {
+        return false;
+      }
+
+      // 5. Search query
+      if (search.trim()) {
+        const q = search.toLowerCase().trim();
+        const invoiceMatch = p.supplierInvoiceNumber?.toLowerCase().includes(q) ?? false;
+        const supplierMatch = p.supplier?.name?.toLowerCase().includes(q) ?? false;
+        const dateMatch = p.purchaseDate?.includes(q) ?? false;
+        const totalMatch = p.grandTotal?.includes(q) ?? false;
+        const itemsMatch = p.items?.some((it) => {
+          const prodName = products.find((prod) => prod.id === it.productId)?.name;
+          const matchName = prodName?.toLowerCase().includes(q) ?? false;
+          const matchBatch = it.batchNumber?.toLowerCase().includes(q) ?? false;
+          return matchName || matchBatch;
+        }) ?? false;
+
+        if (!invoiceMatch && !supplierMatch && !itemsMatch && !dateMatch && !totalMatch) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [purchases, paymentFilter, purcTypeFilter, supplierFilter, dateFrom, dateTo, search, products]);
+
+  const sortedPurchases = useMemo(() => {
+    return [...filteredPurchases].sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeA !== timeB) return timeB - timeA;
+      const dateA = a.purchaseDate || "";
+      const dateB = b.purchaseDate || "";
+      return dateB.localeCompare(dateA);
+    });
+  }, [filteredPurchases]);
+
+  const totalItems = sortedPurchases.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
+
+  const paginatedPurchases = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return sortedPurchases.slice(start, start + ITEMS_PER_PAGE);
+  }, [sortedPurchases, currentPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  /* ---- stats ---- */
 
   const stats = useMemo(() => ({
-    total: pagination.total,
-    amount: purchases.reduce((s, p) => s + Number(p.grandTotal), 0),
-    cash: purchases.filter(p => p.paymentType === "CASH").length,
-    credit: purchases.filter(p => p.paymentType === "CREDIT").length,
-  }), [purchases, pagination.total]);
+    total: filteredPurchases.length,
+    amount: filteredPurchases.reduce((s, p) => s + Number(p.grandTotal || 0), 0),
+    cash: filteredPurchases.filter(p => p.paymentType === "CASH").length,
+    credit: filteredPurchases.filter(p => p.paymentType === "CREDIT").length,
+  }), [filteredPurchases]);
 
   /* ---- purchase modal ---- */
 
@@ -517,7 +714,6 @@ export default function PurchasePage() {
       vatRate: 13,
       supplierId: record.supplier?.id ?? "",
       supplierName: record.supplier?.name ?? "",
-      roundingDirection: record.roundingDirection ?? "DOWN",
       items: record.items.map((it) => {
   const product = products.find((p) => p.id === it.productId);
   return {
@@ -541,10 +737,23 @@ export default function PurchasePage() {
     },
   };
 }),
-      discountAmount: Number(record.discount),
-      discountType: "Flat",
-      freightCharges: Number(record.freightCharges),
-      vatRefund: Number(record.vatRefund),
+      discounts: [
+        ...(Number(record.discount) > 0
+          ? [{ id: crypto.randomUUID(), category: "Discount" as const, amount: Number(record.discount), type: "Flat" as const }]
+          : []),
+        ...(Number(record.freightCharges) > 0
+          ? [{ id: crypto.randomUUID(), category: "Freight and forwarding charges" as const, amount: Number(record.freightCharges), type: "Flat" as const }]
+          : []),
+        ...(Number(record.vatRefund) > 0
+          ? [{ id: crypto.randomUUID(), category: "VAT refund" as const, amount: Number(record.vatRefund), type: "Flat" as const }]
+          : []),
+        ...(Number(record.roundOff) < 0
+          ? [{ id: crypto.randomUUID(), category: "Rounded off (-)" as const, amount: Math.abs(Number(record.roundOff)), type: "Flat" as const }]
+          : Number(record.roundOff) > 0
+          ? [{ id: crypto.randomUUID(), category: "Rounded off (+)" as const, amount: Number(record.roundOff), type: "Flat" as const }]
+          : []),
+      ],
+      roundingDirection: record.roundingDirection ?? "DOWN",
     });
     setExpandedLineIds([]);
     setIsModalOpen(true);
@@ -597,6 +806,35 @@ export default function PurchasePage() {
     setExpandedLineIds(prev => prev.filter(x => x !== id));
   }
 
+  function addDiscount() {
+    setForm((p) => ({ ...p, discounts: [...p.discounts, emptyDiscount()] }));
+  }
+  function removeDiscount(id: string) {
+    setForm((p) => ({ ...p, discounts: p.discounts.filter((d) => d.id !== id) }));
+  }
+  function updateDiscount(id: string, patch: Partial<DiscountRowForm>) {
+    setForm((p) => {
+      let nextRounding = p.roundingDirection;
+      if (patch.category === "Rounded off (-)") {
+        nextRounding = "DOWN";
+      } else if (patch.category === "Rounded off (+)") {
+        nextRounding = "UP";
+      }
+      return {
+        ...p,
+        roundingDirection: nextRounding,
+        discounts: p.discounts.map((d) => {
+          if (d.id !== id) return d;
+          const updated = { ...d, ...patch };
+          if (patch.category === "Rounded off (-)" || patch.category === "Rounded off (+)") {
+            updated.type = "Flat";
+          }
+          return updated;
+        }),
+      };
+    });
+  }
+
   const validItems = form.items.filter(li => li.itemId && n(li.qty) > 0);
   const missingBatch = form.items.some(
     li => li.itemId && n(li.qty) > 0 && (!li.batch?.batchNo || !li.batch.batchNo.trim())
@@ -606,23 +844,44 @@ export default function PurchasePage() {
   );
 
   const subtotal = subtotalOf(form.items);
-  const discountTotal = discountValueOf(subtotal, form.discountAmount, form.discountType);
   const vatEstimate = estimateVat(form.items, form.purcType, form.vatRate);
-  const rawTotalEstimate = subtotal - discountTotal + n(form.freightCharges) + vatEstimate - n(form.vatRefund);
-  const grandTotalEstimate =
-    form.roundingDirection === "UP" ? Math.ceil(rawTotalEstimate) : Math.floor(rawTotalEstimate);
+  const adjustments = calculateAdjustmentsBreakdown(form.discounts, subtotal, vatEstimate);
+  const hasRoundingAdjustment = form.discounts.some(
+    (d) => d.category === "Rounded off (-)" || d.category === "Rounded off (+)"
+  );
+  const rawTotalEstimate =
+    subtotal -
+    adjustments.discountTotal +
+    adjustments.freightTotal +
+    vatEstimate -
+    adjustments.vatRefundTotal -
+    adjustments.roundOffMinusTotal +
+    adjustments.roundOffPlusTotal;
+  const grandTotalEstimate = hasRoundingAdjustment
+    ? (adjustments.effectiveRoundingDirection === "UP"
+        ? Math.ceil(rawTotalEstimate)
+        : Math.floor(rawTotalEstimate))
+    : rawTotalEstimate;
 
 function buildPayload() {
+  const roundOffValue =
+    adjustments.roundOffPlusTotal > 0
+      ? adjustments.roundOffPlusTotal
+      : adjustments.roundOffMinusTotal > 0
+      ? -adjustments.roundOffMinusTotal
+      : 0;
+
   return {
     supplierId: form.supplierId,
     supplierInvoiceNumber: form.supplierInvoiceNumber.trim() || undefined,
     purchaseDate: form.date,
     purcType: form.purcType,
     paymentType: form.paymentType,
-    roundingDirection: form.roundingDirection,
-    discount: n(form.discountAmount),
-    freightCharges: n(form.freightCharges),
-    vatRefund: n(form.vatRefund),
+    roundingDirection: adjustments.effectiveRoundingDirection,
+    discount: adjustments.discountTotal,
+    freightCharges: adjustments.freightTotal,
+    vatRefund: adjustments.vatRefundTotal,
+    roundOff: roundOffValue,
     vatRate: n(form.vatRate),
     items: validItems.map((li) => ({
       ...(li.purchaseItemId ? { purchaseItemId: li.purchaseItemId } : {}),
@@ -680,18 +939,12 @@ function buildPayload() {
     }
   }
 
-  const totalPages = pagination.totalPages;
-
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
       <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div>
-<<<<<<< HEAD
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Purchase</h1>
-=======
-          <h1 className="text-2xl font-semibold tracking-tight">Purchase</h1>
->>>>>>> db6d4224199bcce5937a2b4a046fea6bc1b49b46
         </div>
         <button
           onClick={openAdd}
@@ -712,10 +965,10 @@ function buildPayload() {
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Purchases", value: stats.total, format: undefined, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Receipt className="h-5 w-5 sm:h-6 sm:w-6" /> },
-          { label: "Page Amount", value: stats.amount, format: rs, border: "border-l-[#044d73]", iconBg: "bg-[#044d73]/10 text-[#044d73]", icon: <Wallet className="h-5 w-5 sm:h-6 sm:w-6" /> },
-          { label: "Cash (this page)", value: stats.cash, format: undefined, border: "border-l-emerald-500", iconBg: "bg-emerald-50 text-emerald-600", icon: <Banknote className="h-5 w-5 sm:h-6 sm:w-6" /> },
-          { label: "Credit (this page)", value: stats.credit, format: undefined, border: "border-l-amber-500", iconBg: "bg-amber-50 text-amber-600", icon: <CreditCard className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: isFiltered ? "Filtered Purchases" : "Total Purchases", value: stats.total, format: undefined, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Receipt className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: isFiltered ? "Filtered Spend" : "Total Spend", value: stats.amount, format: rs, border: "border-l-[#044d73]", iconBg: "bg-[#044d73]/10 text-[#044d73]", icon: <Wallet className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "Cash Purchases", value: stats.cash, format: undefined, border: "border-l-emerald-500", iconBg: "bg-emerald-50 text-emerald-600", icon: <Banknote className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "Credit Purchases", value: stats.credit, format: undefined, border: "border-l-amber-500", iconBg: "bg-amber-50 text-amber-600", icon: <CreditCard className="h-5 w-5 sm:h-6 sm:w-6" /> },
         ].map(s => (
           <div key={s.label} className={`rounded-xl border-l-4 ${s.border} border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between`}>
             <div>
@@ -729,6 +982,133 @@ function buildPayload() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Control Actions Panel (Search & Filters) */}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            {/* Search Input */}
+            <div className="relative w-full sm:w-72 lg:w-80">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="Search invoice #, supplier, medicine, batch..."
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73] transition-all"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setCurrentPage(1);
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
+                  title="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Payment Filter */}
+            <select
+              value={paymentFilter}
+              onChange={(e) => {
+                setPaymentFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+            >
+              <option value="ALL">All Payments</option>
+              <option value="CASH">Cash</option>
+              <option value="CREDIT">Credit</option>
+            </select>
+
+            {/* Purc Type Filter */}
+            <select
+              value={purcTypeFilter}
+              onChange={(e) => {
+                setPurcTypeFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+            >
+              <option value="ALL">All Purc Types</option>
+              <option value="VAT_EXEMPT">VAT/Exempt</option>
+              <option value="VAT_ITEM_WISE">VAT/Item-wise</option>
+              <option value="VAT_TAX_INCL">VAT/TaxIncl.</option>
+            </select>
+
+            {/* Supplier Filter */}
+            <select
+              value={supplierFilter}
+              onChange={(e) => {
+                setSupplierFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full sm:w-auto max-w-[200px] truncate rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+            >
+              <option value="ALL">All Suppliers</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date range filters + reset */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-36">
+                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="date"
+                  value={dateFrom}
+                  max={dateTo || undefined}
+                  onChange={(e) => {
+                    setDateFrom(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-2.5 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                  title="From Date"
+                />
+              </div>
+              <span className="text-xs text-slate-400">to</span>
+              <div className="relative flex-1 sm:w-36">
+                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(e) => {
+                    setDateTo(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-2.5 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                  title="To Date"
+                />
+              </div>
+            </div>
+
+            {isFiltered && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+                title="Reset all filters"
+              >
+                <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Table */}
@@ -751,9 +1131,28 @@ function buildPayload() {
             <tbody className="divide-y divide-slate-100">
               {loadingPurchases ? (
                 <tr><td colSpan={9} className="py-16"><DotsLoader text="Loading purchases..." size="sm" /></td></tr>
-              ) : purchases.length === 0 ? (
-                <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">No purchases yet.</td></tr>
-              ) : purchases.map(p => {
+              ) : paginatedPurchases.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-16 text-center text-sm text-slate-400">
+                    {isFiltered ? (
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Receipt className="h-8 w-8 text-slate-300" />
+                        <p className="font-medium text-slate-600">No matching purchases found</p>
+                        <p className="text-xs text-slate-400">Try adjusting your search query or filters.</p>
+                        <button
+                          type="button"
+                          onClick={clearAllFilters}
+                          className="mt-2 text-xs font-semibold text-[#044d73] hover:underline"
+                        >
+                          Clear all filters
+                        </button>
+                      </div>
+                    ) : (
+                      "No purchases yet."
+                    )}
+                  </td>
+                </tr>
+              ) : paginatedPurchases.map(p => {
                 const totalQty = p.items.reduce((s, li) => s + li.quantity, 0);
                 return (
                   <tr
@@ -822,15 +1221,16 @@ function buildPayload() {
           </table>
         </div>
 
-        {pagination.total > 0 && (
+        {totalItems > 0 && (
           <div className="flex flex-col gap-4 items-center justify-between border-t border-slate-100 bg-white px-6 py-4 sm:flex-row">
             <span className="text-xs text-slate-400">
-              Showing {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, pagination.total)}–{Math.min(currentPage * ITEMS_PER_PAGE, pagination.total)} of {pagination.total} purchase{pagination.total !== 1 ? "s" : ""}
+              Showing {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, totalItems)}–{Math.min(currentPage * ITEMS_PER_PAGE, totalItems)} of {totalItems} purchase{totalItems !== 1 ? "s" : ""}
+              {isFiltered && ` (filtered from ${purchases.length} total)`}
             </span>
 
             <div className="flex items-center justify-between w-full sm:w-auto gap-6">
               <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                Page {currentPage} of {pagination.totalPages}
+                Page {currentPage} of {totalPages}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -842,8 +1242,8 @@ function buildPayload() {
                   <ChevronLeft className="h-5 w-5" />
                 </button>
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(p + 1, pagination.totalPages))}
-                  disabled={currentPage === pagination.totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                  disabled={currentPage === totalPages}
                   className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors touch-manipulation"
                   title="Next Page"
                 >
@@ -960,17 +1360,38 @@ function buildPayload() {
                 <div className="flex justify-between text-xs text-slate-500">
                   <span>Subtotal</span><span>{rs(Number(viewingPurchase.subtotal))}</span>
                 </div>
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>Discount</span><span>- {rs(Number(viewingPurchase.discount))}</span>
-                </div>
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>Freight</span><span>{rs(Number(viewingPurchase.freightCharges))}</span>
-                </div>
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>VAT</span><span>{rs(Number(viewingPurchase.vatAmount))}</span>
-                </div>
+                {Number(viewingPurchase.discount) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>Discount</span><span>- {rs(Number(viewingPurchase.discount))}</span>
+                  </div>
+                )}
+                {Number(viewingPurchase.freightCharges) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>Freight & Forwarding</span><span>+ {rs(Number(viewingPurchase.freightCharges))}</span>
+                  </div>
+                )}
+                {Number(viewingPurchase.vatRefund) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>VAT Refund</span><span>- {rs(Number(viewingPurchase.vatRefund))}</span>
+                  </div>
+                )}
+                {Number(viewingPurchase.roundOff) < 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>Rounded Off (−)</span><span>- {rs(Math.abs(Number(viewingPurchase.roundOff)))}</span>
+                  </div>
+                )}
+                {Number(viewingPurchase.roundOff) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>Rounded Off (+)</span><span>+ {rs(Number(viewingPurchase.roundOff))}</span>
+                  </div>
+                )}
+                {Number(viewingPurchase.vatAmount) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>VAT</span><span>{rs(Number(viewingPurchase.vatAmount))}</span>
+                  </div>
+                )}
                 <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold text-slate-800">
-                  <span>Grand Total</span><span>{rs(Number(viewingPurchase.grandTotal))}</span>
+                  <span>Grand Total</span><span className="text-[#044d73]">{rs(Number(viewingPurchase.grandTotal))}</span>
                 </div>
               </div>
             </div>
@@ -1076,22 +1497,6 @@ function buildPayload() {
                         />
                       </Field>
                     )}
-                    <Field label="Freight Charges">
-                      <input
-                        type="number" min={0} step="0.01"
-                        value={form.freightCharges}
-                        onChange={e => setForm(p => ({ ...p, freightCharges: e.target.value === "" ? "" : Number(e.target.value) }))}
-                        className={inputCls}
-                      />
-                    </Field>
-                    <Field label="VAT Refund">
-                      <input
-                        type="number" min={0} step="0.01"
-                        value={form.vatRefund}
-                        onChange={e => setForm(p => ({ ...p, vatRefund: e.target.value === "" ? "" : Number(e.target.value) }))}
-                        className={inputCls}
-                      />
-                    </Field>
                   </div>
                 </Section>
 
@@ -1311,77 +1716,128 @@ function buildPayload() {
                   )}
                 </Section>
 
-                <Section title="Discount" icon={<Percent className="w-3.5 h-3.5" />}>
-                  <div className="grid grid-cols-2 gap-3 max-w-sm">
-                    <Field label="Amount">
-                      <input
-                        type="number" min={0} step="0.01"
-                        value={form.discountAmount}
-                        placeholder={form.discountType === "Percentage" ? "%" : "Rs."}
-                        onChange={e => setForm(p => ({ ...p, discountAmount: e.target.value === "" ? "" : Number(e.target.value) }))}
-                        className={inputCls}
-                      />
-                    </Field>
-                    <Field label="Type">
-                      <select
-                        value={form.discountType}
-                        onChange={e => setForm(p => ({ ...p, discountType: e.target.value as DiscountType }))}
-                        className={inputCls}
-                      >
-                        <option value="Flat">Flat</option>
-                        <option value="Percentage">Percentage</option>
-                      </select>
-                    </Field>
-                  </div>
-
-                  <div className="mt-4 max-w-sm">
-                    <Field label="Rounding">
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setForm(p => ({ ...p, roundingDirection: "DOWN" }))}
-                          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                            form.roundingDirection === "DOWN"
-                              ? "border-[#044d73] bg-[#044d73] text-white"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                          }`}
-                        >
-                          Round Down (−)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setForm(p => ({ ...p, roundingDirection: "UP" }))}
-                          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                            form.roundingDirection === "UP"
-                              ? "border-[#044d73] bg-[#044d73] text-white"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                          }`}
-                        >
-                          Round Up (+)
-                        </button>
-                      </div>
-                    </Field>
-                  </div>
+                <Section
+                  title="Discounts & Charges"
+                  icon={<Percent className="w-3.5 h-3.5" />}
+                  action={
+                    <button type="button" onClick={addDiscount} className="flex items-center gap-1.5 text-xs font-semibold text-[#044d73] hover:underline">
+                      <Plus className="w-3.5 h-3.5" /> Add Discount / Charge
+                    </button>
+                  }
+                >
+                  {form.discounts.length === 0 ? (
+                    <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs text-slate-400">No discount or charges applied to this purchase.</p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-slate-50/70 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                            <th className="py-2.5 px-3 w-10 text-center">S.N</th>
+                            <th className="py-2.5 px-3 min-w-[210px]">Adjustment / Charge Type</th>
+                            <th className="py-2.5 px-3 min-w-[110px]">Amount</th>
+                            <th className="py-2.5 px-3 min-w-[120px]">Type</th>
+                            <th className="py-2.5 px-3 w-10 text-center"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {form.discounts.map((d, idx) => (
+                            <tr key={d.id}>
+                              <td className="py-2 px-3 text-center text-slate-500 font-medium">{idx + 1}</td>
+                              <td className="py-2 px-3">
+                                <select
+                                  value={d.category || "Discount"}
+                                  onChange={(e) => updateDiscount(d.id, { category: e.target.value as AdjustmentCategory })}
+                                  className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs sm:text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                                >
+                                  <option value="Discount">Discount</option>
+                                  <option value="Freight and forwarding charges">Freight and forwarding charges</option>
+                                  <option value="Rounded off (-)">Rounded off (-)</option>
+                                  <option value="Rounded off (+)">Rounded off (+)</option>
+                                  <option value="VAT refund">VAT refund</option>
+                                </select>
+                              </td>
+                              <td className="py-2 px-3">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={d.amount}
+                                  placeholder={
+                                    d.category === "Rounded off (-)"
+                                      ? `Auto (${adjustments.roundOffMinusTotal.toFixed(2)})`
+                                      : d.category === "Rounded off (+)"
+                                      ? `Auto (${adjustments.roundOffPlusTotal.toFixed(2)})`
+                                      : d.type === "Percentage"
+                                      ? "%"
+                                      : "Rs."
+                                  }
+                                  onChange={(e) => updateDiscount(d.id, { amount: e.target.value === "" ? "" : Number(e.target.value) })}
+                                  className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                {d.category === "Rounded off (-)" || d.category === "Rounded off (+)" ? (
+                                  <div className="w-full rounded-md border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs font-medium text-slate-500">
+                                    Flat (Rs.)
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={d.type}
+                                    onChange={(e) => updateDiscount(d.id, { type: e.target.value as DiscountType })}
+                                    className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                                  >
+                                    <option value="Flat">Flat (Rs.)</option>
+                                    <option value="Percentage">Percentage (%)</option>
+                                  </select>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                <button type="button" onClick={() => removeDiscount(d.id)} className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </Section>
 
                 <div className="sm:ml-auto w-full sm:max-w-xs space-y-1.5 rounded-xl bg-slate-50 p-4 border border-slate-200">
                   <div className="flex justify-between text-xs sm:text-sm text-slate-500">
                     <span>Subtotal</span><span>{rs(subtotal)}</span>
                   </div>
-                  <div className="flex justify-between text-xs sm:text-sm text-slate-500">
-                    <span>Discount</span><span>- {rs(discountTotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs sm:text-sm text-slate-500">
-                    <span>Freight</span><span>{rs(n(form.freightCharges))}</span>
-                  </div>
+                  {adjustments.discountTotal > 0 && (
+                    <div className="flex justify-between text-xs sm:text-sm text-slate-500">
+                      <span>Discount</span><span>- {rs(adjustments.discountTotal)}</span>
+                    </div>
+                  )}
+                  {adjustments.freightTotal > 0 && (
+                    <div className="flex justify-between text-xs sm:text-sm text-slate-500">
+                      <span>Freight & Forwarding</span><span>+ {rs(adjustments.freightTotal)}</span>
+                    </div>
+                  )}
+                  {adjustments.vatRefundTotal > 0 && (
+                    <div className="flex justify-between text-xs sm:text-sm text-slate-500">
+                      <span>VAT Refund</span><span>- {rs(adjustments.vatRefundTotal)}</span>
+                    </div>
+                  )}
+                  {adjustments.roundOffMinusTotal > 0 && (
+                    <div className="flex justify-between text-xs sm:text-sm text-slate-500">
+                      <span>Rounded Off (−)</span><span>- {rs(adjustments.roundOffMinusTotal)}</span>
+                    </div>
+                  )}
+                  {adjustments.roundOffPlusTotal > 0 && (
+                    <div className="flex justify-between text-xs sm:text-sm text-slate-500">
+                      <span>Rounded Off (+)</span><span>+ {rs(adjustments.roundOffPlusTotal)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-xs sm:text-sm text-slate-500">
                     <span>VAT (estimate)</span><span>{rs(vatEstimate)}</span>
                   </div>
-                  <div className="flex justify-between text-xs sm:text-sm text-slate-500">
-                    <span>Rounding</span><span>{form.roundingDirection === "UP" ? "Round Up (+)" : "Round Down (−)"}</span>
-                  </div>
                   <div className="flex justify-between border-t border-slate-200 pt-2 text-sm sm:text-base font-bold text-slate-800">
-                    <span>Grand Total (estimate)</span><span>{rs(grandTotalEstimate)}</span>
+                    <span>Grand Total (estimate)</span><span className="text-[#044d73]">{rs(grandTotalEstimate)}</span>
                   </div>
                   <p className="text-[10px] text-slate-400 pt-1">Final totals are calculated by the server on save.</p>
                 </div>

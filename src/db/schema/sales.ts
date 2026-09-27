@@ -36,7 +36,16 @@ export const sales = pgTable(
     discount: numeric("discount", { precision: 12, scale: 2 })
       .notNull()
       .default("0"),
+    freightCharges: numeric("freight_charges", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
     vatAmount: numeric("vat_amount", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
+    vatRefund: numeric("vat_refund", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
+    roundOff: numeric("round_off", { precision: 12, scale: 2 })
       .notNull()
       .default("0"),
     prescriptionNote: text("prescription_note"),

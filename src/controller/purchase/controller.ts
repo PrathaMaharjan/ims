@@ -28,7 +28,6 @@ function round2(n: number): number {
 export function calculatePurchaseTotals(
   input: CreatePurchaseInput,
 ): PurchaseTotals {
-  // Each line's amount = quantity (from the batch panel) × purchase rate.
   const lineTotals = input.items.map((item) =>
     round2(item.batch.quantity * item.purchaseRate),
   );
@@ -38,24 +37,17 @@ export function calculatePurchaseTotals(
   let vatAmount = 0;
 
   if (input.purcType === "VAT_EXEMPT") {
-    // No VAT at all on this purchase.
     vatAmount = 0;
   } else if (input.purcType === "VAT_ITEM_WISE") {
-    // Only lines marked vatApplicable contribute to the VAT base.
     const vatableSubtotal = input.items.reduce(
       (sum, item, i) => (item.vatApplicable ? sum + lineTotals[i] : sum),
       0,
     );
     vatAmount = round2((vatableSubtotal * input.vatRate) / 100);
   } else if (input.purcType === "VAT_TAX_INCL") {
-    // Prices entered already include VAT — back-calculate the VAT portion
-    // out of the subtotal rather than adding it on top.
     vatAmount = round2(subtotal - subtotal / (1 + input.vatRate / 100));
   }
 
-  // Discount and freight apply on top of subtotal + VAT; vatRefund reduces
-  // what's actually owed. roundedOff is never stored — the whole point of
-  // dropping that column earlier was to compute it on the fly, not persist it.
   const afterAdjustments =
     subtotal -
     input.discount +
@@ -63,7 +55,12 @@ export function calculatePurchaseTotals(
     vatAmount -
     input.vatRefund;
 
-  const grandTotal = Math.round(afterAdjustments);
+  // Rounding direction is now a real user choice, not a fixed rule — the
+  // caller's roundingDirection decides ceil vs floor, not "nearest."
+  const grandTotal =
+    input.roundingDirection === "UP"
+      ? Math.ceil(afterAdjustments)
+      : Math.floor(afterAdjustments);
 
   return { subtotal, vatAmount, grandTotal, lineTotals };
 }
@@ -258,6 +255,7 @@ export async function createPurchase(
       paymentType: input.paymentType,
       subtotal: totals.subtotal.toFixed(2),
       discount: input.discount.toFixed(2),
+      roundingDirection: input.roundingDirection,
       freightCharges: input.freightCharges.toFixed(2),
       vatAmount: totals.vatAmount.toFixed(2),
       vatRefund: input.vatRefund.toFixed(2),
@@ -316,6 +314,7 @@ export async function createPurchase(
           quantityReceived: item.batch.quantity,
           quantityAvailable: item.batch.quantity,
           status: "ACTIVE" as const,
+          note: item.batch.note ?? null,
         })),
       )
       .returning({ id: batches.id });
@@ -540,6 +539,7 @@ export async function updatePurchase(
         purchaseDate: input.purchaseDate,
         purcType: input.purcType,
         subtotal: totals.subtotal.toFixed(2),
+        roundingDirection: input.roundingDirection,
         discount: input.discount.toFixed(2),
         freightCharges: input.freightCharges.toFixed(2),
         vatAmount: totals.vatAmount.toFixed(2),
@@ -605,6 +605,7 @@ export async function updatePurchase(
               item.batch.salePrice !== undefined
                 ? item.batch.salePrice.toFixed(2)
                 : null,
+            note: item.batch.note ?? null,
             quantityReceived: item.batch.quantity,
             quantityAvailable: sql`${batches.quantityAvailable} + ${delta}`,
             updatedAt: new Date(),

@@ -7,6 +7,7 @@ export const batchDetailsSchema = z.object({
   quantity: z.number().int().positive(),
   expiryDate: z.string().min(1), // required — matches batches.expiryDate NOT NULL
   manufacturingDate: z.string().optional(),
+  note: z.string().max(1000).optional(),
   mrp: z.number().nonnegative().optional(),
   salePrice: z.number().nonnegative().optional(),
   supplierId: z.string().uuid().optional(), // per-line override; falls back to the purchase's supplierId if omitted

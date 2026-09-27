@@ -13,9 +13,10 @@ export const createPurchaseSchema = z.object({
   supplierInvoiceNumber: z.string().max(100).optional(),
   purchaseDate: z.string(),
   purcType: z.enum(["VAT_EXEMPT", "VAT_ITEM_WISE", "VAT_TAX_INCL"]),
-  paymentType: z
+paymentType: z
     .enum(["CASH", "CREDIT", "BANK_TRANSFER", "CHEQUE", "MOBILE_PAYMENT"])
     .default("CASH"),
+  roundingDirection: z.enum(["UP", "DOWN"]).default("DOWN"),
   discount: z.number().nonnegative().default(0),
   freightCharges: z.number().nonnegative().default(0),
   vatRefund: z.number().nonnegative().default(0),
@@ -42,15 +43,17 @@ export const updatePurchaseSchema = z.object({
   supplierInvoiceNumber: z.string().max(100).optional(),
   purchaseDate: z.string(),
   purcType: z.enum(["VAT_EXEMPT", "VAT_ITEM_WISE", "VAT_TAX_INCL"]),
-  paymentType: z
+ paymentType: z
     .enum(["CASH", "CREDIT", "BANK_TRANSFER", "CHEQUE", "MOBILE_PAYMENT"])
     .default("CASH"),
+  roundingDirection: z.enum(["UP", "DOWN"]).default("DOWN"),
   discount: z.number().nonnegative().default(0),
   freightCharges: z.number().nonnegative().default(0),
   vatRefund: z.number().nonnegative().default(0),
   vatRate: z.number().nonnegative().max(100).default(13),
   items: z.array(updatePurchaseItemInputSchema).min(1),
 });
+
 
 export type UpdatePurchaseInput = z.infer<typeof updatePurchaseSchema>;
 export type UpdatePurchaseItemInput = z.infer<

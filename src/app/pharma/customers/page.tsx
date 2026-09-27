@@ -787,4 +787,8 @@ export default function CustomersPage() {
       )}
     </div>
   );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> db6d4224199bcce5937a2b4a046fea6bc1b49b46

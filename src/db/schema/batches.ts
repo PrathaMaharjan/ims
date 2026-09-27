@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, date, numeric, integer, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, date, numeric, integer, timestamp, index,text } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { organizations } from "./organizations";
 import { products } from "./products";
@@ -20,6 +20,7 @@ export const batches = pgTable("batches", {
   supplierId: uuid("supplier_id").references(() => suppliers.id, {
     onDelete: "set null",
   }),
+  note: text("note"),
   batchNumber: varchar("batch_number", { length: 100 }).notNull(),
   manufacturingDate: date("manufacturing_date"),
   expiryDate: date("expiry_date").notNull(),

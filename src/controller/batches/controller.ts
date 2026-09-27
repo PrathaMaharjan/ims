@@ -13,6 +13,7 @@ const batchColumns = {
   quantityReceived: true,
   quantityAvailable: true,
   status: true,
+  note : true,
   supplierId: true,
   createdAt: true,
 } as const;

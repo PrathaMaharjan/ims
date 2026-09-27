@@ -216,7 +216,7 @@ export default function CustomersPage() {
     try {
       if (editingCustomer) {
         const res = await api.patch(
-          `/customers/${editingCustomer.id}`,
+          `/api/customers/${editingCustomer.id}`,
           payload,
         );
         const updated: Customer = res.data.customer;
@@ -225,7 +225,7 @@ export default function CustomersPage() {
           prev.map((c) => (c.id === updated.id ? updated : c)),
         );
       } else {
-        const res = await api.post("/customers", payload);
+        const res = await api.post("/api/customers", payload);
         const created: Customer = res.data.customer;
         applyStatsDelta(null, created);
         if (
@@ -254,7 +254,7 @@ export default function CustomersPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await api.delete(`/customers/${deleteTarget.id}`);
+      await api.delete(`/api/customers/${deleteTarget.id}`);
       applyStatsDelta(deleteTarget, null);
       setCustomers((prev) => prev.filter((c) => c.id !== deleteTarget.id));
       setPagination((p) => {
@@ -285,7 +285,7 @@ export default function CustomersPage() {
     );
     applyStatsDelta(customer, updated);
     try {
-      await api.patch(`/customers/${customer.id}`, { status: newStatus });
+      await api.patch(`/api/customers/${customer.id}`, { status: newStatus });
     } catch {
       // revert both the row and the stats delta on failure
       setCustomers((prev) =>

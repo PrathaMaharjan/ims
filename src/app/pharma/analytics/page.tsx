@@ -24,48 +24,65 @@ import {
     Pie,
     Cell,
 } from "recharts";
+import { api } from "@/lib/api-client";
+import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 
+/* ------------------------------------------------------------------ */
+/* Types — mirror the analytics controller's return shapes             */
+/* ------------------------------------------------------------------ */
 
-interface MonthRow {
-    month: string; // "2026-01"
+interface SummaryCards {
     revenue: number;
-    purchaseExpense: number;
-    wastageExpense: number;
-    manualExpense: number;
+    totalExpense: number;
+    netProfit: number;
 }
 
-type ViewMode = "monthly" | "yearly" | "overall";
+interface BreakdownRow {
+    period: string; // "January".."December" (monthly) or "2026","2027" (yearly)
+    purchaseExpense: number;
+    manualExpense: number;
+    totalExpense: number;
+    revenue: number;
+    netProfit: number;
+}
 
-const MONTHS: MonthRow[] = [
-    { month: "2026-01", revenue: 185000, purchaseExpense: 92000, wastageExpense: 3200, manualExpense: 14000 },
-    { month: "2026-02", revenue: 172000, purchaseExpense: 88000, wastageExpense: 2100, manualExpense: 12500 },
-    { month: "2026-03", revenue: 204000, purchaseExpense: 101000, wastageExpense: 4600, manualExpense: 15800 },
-    { month: "2026-04", revenue: 198500, purchaseExpense: 97500, wastageExpense: 2800, manualExpense: 13200 },
-    { month: "2026-05", revenue: 221000, purchaseExpense: 108000, wastageExpense: 3900, manualExpense: 16400 },
-    { month: "2026-06", revenue: 213000, purchaseExpense: 103500, wastageExpense: 5200, manualExpense: 14900 },
-    { month: "2026-07", revenue: 236500, purchaseExpense: 114000, wastageExpense: 3100, manualExpense: 17600 },
-    { month: "2026-08", revenue: 229000, purchaseExpense: 110500, wastageExpense: 4400, manualExpense: 15200 },
-    { month: "2026-09", revenue: 247500, purchaseExpense: 118000, wastageExpense: 2900, manualExpense: 18100 },
-];
+interface CategoryTotal {
+    category: string;
+    amount: number;
+}
+
+interface ExpenseSplit {
+    categories: CategoryTotal[];
+    total: number;
+}
+
+interface RevenueVsExpenseRow {
+    period: string;
+    revenue: number;
+    totalExpense: number;
+    netProfit: number;
+}
+
+type ViewMode = "monthly" | "yearly";
 
 const VIEW_MODES: { value: ViewMode; label: string }[] = [
     { value: "monthly", label: "Monthly" },
     { value: "yearly", label: "Yearly" },
-    { value: "overall", label: "Overall" },
 ];
 
 const ITEMS_PER_PAGE = 6;
 const COLORS = { revenue: "#044d73", expense: "#f43f5e", profit: "#0ea5e9" };
-const PIE_COLORS = ["#044d73", "#f59e0b", "#94a3b8"];
+// expense-split returns whatever categories exist, so the palette cycles.
+const PIE_COLORS = ["#044d73", "#f59e0b", "#0ea5e9", "#94a3b8", "#a855f7", "#22c55e", "#ef4444", "#14b8a6"];
 
-function formatMonthLabel(month: string): string {
-    const [y, m] = month.split("-").map(Number);
-    return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-}
-
-function withDerived(r: MonthRow) {
-    const totalExpense = r.purchaseExpense + r.wastageExpense + r.manualExpense;
-    return { ...r, totalExpense, netProfit: r.revenue - totalExpense };
+// Default range: the last 9 months ending this month, in local time.
+function defaultMonthRange(): { start: string; end: string } {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const end = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+    const startDate = new Date(now.getFullYear(), now.getMonth() - 8, 1);
+    const start = `${startDate.getFullYear()}-${pad(startDate.getMonth() + 1)}`;
+    return { start, end };
 }
 
 /* ------------------------------------------------------------------ */
@@ -73,75 +90,95 @@ function withDerived(r: MonthRow) {
 /* ------------------------------------------------------------------ */
 
 export default function AnalyticsPage() {
+    const initialRange = useMemo(defaultMonthRange, []);
+
     const [viewMode, setViewMode] = useState<ViewMode>("monthly");
-    const [startMonth, setStartMonth] = useState(MONTHS[0].month);
-    const [endMonth, setEndMonth] = useState(MONTHS[MONTHS.length - 1].month);
+    const [startMonth, setStartMonth] = useState(initialRange.start);
+    const [endMonth, setEndMonth] = useState(initialRange.end);
     const [tablePage, setTablePage] = useState(1);
 
-    useEffect(() => { setTablePage(1); }, [viewMode]);
+    const [stats, setStats] = useState<SummaryCards>({ revenue: 0, totalExpense: 0, netProfit: 0 });
+    const [breakdown, setBreakdown] = useState<BreakdownRow[]>([]);
+    const [expenseSplit, setExpenseSplit] = useState<ExpenseSplit>({ categories: [], total: 0 });
+    const [trend, setTrend] = useState<RevenueVsExpenseRow[]>([]);
 
-    const filteredMonths = useMemo(
-        () => MONTHS.filter(m => m.month >= startMonth && m.month <= endMonth).map(withDerived),
-        [startMonth, endMonth]
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    // Hits the four analytics endpoints in parallel — one per widget, the
+    // way the routes are built. Every route takes the same params: `mode`
+    // plus the month span (monthly) or the year span (yearly).
+    useEffect(() => {
+        let cancelled = false;
+
+        async function load() {
+            setLoading(true);
+            setLoadError(null);
+
+            const startYear = Number(startMonth.slice(0, 4));
+            const endYear = Number(endMonth.slice(0, 4));
+
+            const rangeParams =
+                viewMode === "monthly"
+                    ? { mode: "monthly", startMonth, endMonth }
+                    : { mode: "yearly", startYear, endYear };
+
+            try {
+                const [cardsRes, breakdownRes, splitRes, trendRes] = await Promise.all([
+                    api.get("/api/Analytics/stats", { params: rangeParams }),
+                    api.get("/api/Analytics/breakdown", { params: rangeParams }),
+                    api.get("/api/Analytics/expense-split", { params: rangeParams }),
+                    api.get("/api/Analytics/revenue-vs-expenses", { params: rangeParams }),
+                ]);
+
+                if (cancelled) return;
+
+                setStats(cardsRes.data);
+                setBreakdown(breakdownRes.data);
+                setExpenseSplit(splitRes.data);
+                setTrend(trendRes.data);
+                setTablePage(1);
+            } catch {
+                if (!cancelled) setLoadError("Failed to load analytics.");
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        }
+
+        load();
+        return () => {
+            cancelled = true;
+        };
+    }, [viewMode, startMonth, endMonth]);
+
+    // Newest period first in the table, chronological in the chart.
+    const tableRows = useMemo(() => [...breakdown].reverse(), [breakdown]);
+
+    const chartData = useMemo(
+        () =>
+            trend.map((r) => ({
+                label: r.period,
+                Revenue: r.revenue,
+                Expense: r.totalExpense,
+                "Net Profit": r.netProfit,
+            })),
+        [trend]
     );
 
-    const yearlyRows = useMemo(() => {
-        const byYear = new Map<string, ReturnType<typeof withDerived>[]>();
-        filteredMonths.forEach(m => {
-            const y = m.month.slice(0, 4);
-            byYear.set(y, [...(byYear.get(y) ?? []), m]);
-        });
-        return Array.from(byYear.entries()).map(([year, rows]) => {
-            const sum = (k: keyof ReturnType<typeof withDerived>) => rows.reduce((s, r) => s + (r[k] as number), 0);
-            return {
-                label: year,
-                revenue: sum("revenue"),
-                purchaseExpense: sum("purchaseExpense"),
-                wastageExpense: sum("wastageExpense"),
-                manualExpense: sum("manualExpense"),
-                totalExpense: sum("totalExpense"),
-                netProfit: sum("netProfit"),
-            };
-        });
-    }, [filteredMonths]);
-
-    const overallRow = useMemo(() => {
-        const sum = (k: keyof ReturnType<typeof withDerived>) => filteredMonths.reduce((s, r) => s + (r[k] as number), 0);
-        return {
-            label: "Overall",
-            revenue: sum("revenue"),
-            purchaseExpense: sum("purchaseExpense"),
-            wastageExpense: sum("wastageExpense"),
-            manualExpense: sum("manualExpense"),
-            totalExpense: sum("totalExpense"),
-            netProfit: sum("netProfit"),
-        };
-    }, [filteredMonths]);
-
-    const tableRows = useMemo(() => {
-        if (viewMode === "overall") return [overallRow];
-        if (viewMode === "yearly") return [...yearlyRows].reverse();
-        return [...filteredMonths.map(m => ({ ...m, label: formatMonthLabel(m.month) }))].reverse();
-    }, [viewMode, filteredMonths, yearlyRows, overallRow]);
-
-    const chartData = useMemo(() => {
-        if (viewMode === "overall") return [{ label: "Overall", Revenue: overallRow.revenue, Expense: overallRow.totalExpense, "Net Profit": overallRow.netProfit }];
-        if (viewMode === "yearly") return yearlyRows.map(y => ({ label: y.label, Revenue: y.revenue, Expense: y.totalExpense, "Net Profit": y.netProfit }));
-        return filteredMonths.map(m => ({ label: formatMonthLabel(m.month), Revenue: m.revenue, Expense: m.totalExpense, "Net Profit": m.netProfit }));
-    }, [viewMode, filteredMonths, yearlyRows, overallRow]);
-
-    const pieData = useMemo(() => [
-        { name: "Purchase", value: overallRow.purchaseExpense },
-        { name: "Manual", value: overallRow.manualExpense },
-        { name: "Wastage", value: overallRow.wastageExpense },
-    ], [overallRow]);
+    const pieData = useMemo(
+        () => expenseSplit.categories.map((c) => ({ name: c.category, value: c.amount })),
+        [expenseSplit]
+    );
 
     const tableTotalPages = Math.max(1, Math.ceil(tableRows.length / ITEMS_PER_PAGE));
     const paginatedRows = tableRows.slice((tablePage - 1) * ITEMS_PER_PAGE, tablePage * ITEMS_PER_PAGE);
 
-    const isProfitPositive = overallRow.netProfit >= 0;
+    const isProfitPositive = stats.netProfit >= 0;
 
     const money = (v: number) => `Rs. ${v.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+    // The animated counter rounds to whole numbers, so the stat cards animate
+    // in paisa (value × 100) and convert back here to keep both decimals.
+    const moneyFromPaisa = (v: number) => money(v / 100);
     const tooltipFormatter = (value: any, name: any) =>
         typeof value === "number" ? [money(value), name] : [value, name];
 
@@ -178,12 +215,18 @@ export default function AnalyticsPage() {
                 </div>
             </div>
 
+            {loadError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {loadError}
+                </div>
+            )}
+
             {/* Stat cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="rounded-xl border-l-4 border-l-[#044d73] border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between">
                     <div>
                         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Revenue</p>
-                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1">{money(overallRow.revenue)}</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1"><AnimatedStatValue value={Math.round(stats.revenue * 100)} format={moneyFromPaisa} /></p>
                     </div>
                     <div className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-[#044d73]/10 text-[#044d73]">
                         <Wallet className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -193,7 +236,7 @@ export default function AnalyticsPage() {
                 <div className="rounded-xl border-l-4 border-l-rose-500 border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between">
                     <div>
                         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Expense</p>
-                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1">{money(overallRow.totalExpense)}</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1"><AnimatedStatValue value={Math.round(stats.totalExpense * 100)} format={moneyFromPaisa} /></p>
                     </div>
                     <div className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
                         <Receipt className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -204,7 +247,7 @@ export default function AnalyticsPage() {
                     <div>
                         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Net Profit</p>
                         <p className={`text-2xl sm:text-3xl font-bold mt-1 ${isProfitPositive ? "text-emerald-600" : "text-rose-600"}`}>
-                            {money(overallRow.netProfit)}
+                            <AnimatedStatValue value={Math.round(stats.netProfit * 100)} format={moneyFromPaisa} />
                         </p>
                     </div>
                     <div className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl ${isProfitPositive ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}>
@@ -225,7 +268,9 @@ export default function AnalyticsPage() {
                         <span className="text-xs text-slate-400">— {viewMode}</span>
                     </div>
 
-                    {chartData.length === 0 ? (
+                    {loading ? (
+                        <div className="h-72 flex items-center justify-center text-xs text-slate-400">Loading…</div>
+                    ) : chartData.length === 0 ? (
                         <div className="h-72 flex items-center justify-center text-xs text-slate-400">No data for this range.</div>
                     ) : (
                         <ResponsiveContainer width="100%" height={320}>
@@ -265,7 +310,9 @@ export default function AnalyticsPage() {
                         <span className="text-sm font-semibold text-slate-700">Expense Split</span>
                     </div>
 
-                    {overallRow.totalExpense === 0 ? (
+                    {loading ? (
+                        <div className="h-56 flex items-center justify-center text-xs text-slate-400">Loading…</div>
+                    ) : expenseSplit.total === 0 ? (
                         <div className="h-56 flex items-center justify-center text-xs text-slate-400">No expense data.</div>
                     ) : (
                         <>
@@ -302,19 +349,21 @@ export default function AnalyticsPage() {
                     </div>
                     {tableRows.length > 0 && (
                         <span className="text-xs text-slate-400 font-medium">
-                            {tableRows.length} {viewMode === "monthly" ? "months" : viewMode === "yearly" ? "years" : "row"}
+                            {tableRows.length} {viewMode === "monthly" ? "months" : "years"}
                         </span>
                     )}
                 </div>
 
-                {tableRows.length === 0 ? (
+                {loading ? (
+                    <p className="text-xs text-slate-400 text-center py-6">Loading…</p>
+                ) : tableRows.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-6">No data for this range.</p>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-slate-100">
-                                    {["Period", "Revenue", "Purchase Exp.", "Wastage Exp.", "Manual Exp.", "Total Expense", "Net Profit"].map((h, i) => (
+                                    {["Period", "Revenue", "Purchase Exp.", "Manual Exp.", "Total Expense", "Net Profit"].map((h, i) => (
                                         <th key={h} className={`text-[10px] font-bold uppercase tracking-widest px-4 py-3 ${i === 0 ? "text-left" : "text-right"} text-slate-400`}>
                                             {h}
                                         </th>
@@ -323,11 +372,10 @@ export default function AnalyticsPage() {
                             </thead>
                             <tbody>
                                 {paginatedRows.map(row => (
-                                    <tr key={row.label} className="border-b last:border-0 border-slate-50 hover:bg-slate-50/60 transition-colors">
-                                        <td className="px-4 py-3 font-semibold text-slate-800">{row.label}</td>
+                                    <tr key={row.period} className="border-b last:border-0 border-slate-50 hover:bg-slate-50/60 transition-colors">
+                                        <td className="px-4 py-3 font-semibold text-slate-800">{row.period}</td>
                                         <td className="px-4 py-3 text-right text-slate-700">{money(row.revenue)}</td>
                                         <td className="px-4 py-3 text-right text-slate-500">{money(row.purchaseExpense)}</td>
-                                        <td className="px-4 py-3 text-right text-slate-500">{money(row.wastageExpense)}</td>
                                         <td className="px-4 py-3 text-right text-slate-500">{money(row.manualExpense)}</td>
                                         <td className="px-4 py-3 text-right font-semibold text-slate-700">{money(row.totalExpense)}</td>
                                         <td className={`px-4 py-3 text-right font-bold ${row.netProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>

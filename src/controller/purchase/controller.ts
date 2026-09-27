@@ -53,14 +53,10 @@ export function calculatePurchaseTotals(
     input.discount +
     input.freightCharges +
     vatAmount -
-    input.vatRefund;
+    input.vatRefund +
+    (input.roundOff ?? 0);
 
-  // Rounding direction is now a real user choice, not a fixed rule — the
-  // caller's roundingDirection decides ceil vs floor, not "nearest."
-  const grandTotal =
-    input.roundingDirection === "UP"
-      ? Math.ceil(afterAdjustments)
-      : Math.floor(afterAdjustments);
+  const grandTotal = round2(afterAdjustments);
 
   return { subtotal, vatAmount, grandTotal, lineTotals };
 }
@@ -259,6 +255,7 @@ export async function createPurchase(
       freightCharges: input.freightCharges.toFixed(2),
       vatAmount: totals.vatAmount.toFixed(2),
       vatRefund: input.vatRefund.toFixed(2),
+      roundOff: (input.roundOff ?? 0).toFixed(2),
       grandTotal: totals.grandTotal.toFixed(2),
       createdByUserId: userId,
     })
@@ -544,6 +541,7 @@ export async function updatePurchase(
         freightCharges: input.freightCharges.toFixed(2),
         vatAmount: totals.vatAmount.toFixed(2),
         vatRefund: input.vatRefund.toFixed(2),
+        roundOff: (input.roundOff ?? 0).toFixed(2),
         grandTotal: totals.grandTotal.toFixed(2),
       })
       .where(eq(purchases.id, purchaseId));

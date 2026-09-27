@@ -26,10 +26,15 @@ export function calculateSaleTotals(input: CreateSaleInput): SaleTotals {
   );
   const vatAmount = round2((vatableSubtotal * input.vatRate) / 100);
 
-  const afterAdjustments = subtotal - input.discount + vatAmount;
+  const discount = input.discount ?? 0;
+  const freightCharges = input.freightCharges ?? 0;
+  const vatRefund = input.vatRefund ?? 0;
+  const roundOff = input.roundOff ?? 0;
 
-  const grandTotal =
-    input.roundingDirection === "UP" ? Math.ceil(afterAdjustments) : Math.floor(afterAdjustments);
+  const afterAdjustments =
+    subtotal - discount + freightCharges + vatAmount - vatRefund + roundOff;
+
+  const grandTotal = round2(afterAdjustments);
 
   return { subtotal, vatAmount, grandTotal, lineTotals };
 }

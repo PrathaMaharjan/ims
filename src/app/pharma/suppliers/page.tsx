@@ -396,13 +396,7 @@ export default function SuppliersPage() {
       {/* Data Section Container */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
-<<<<<<< HEAD
           <div className="py-16"><DotsLoader text="Loading suppliers..." size="sm" /></div>
-=======
-          <div className="py-16 text-center text-sm text-slate-400">
-            Loading suppliers...
-          </div>
->>>>>>> db6d4224199bcce5937a2b4a046fea6bc1b49b46
         ) : (
           <>
             {/* Desktop Table */}
@@ -635,21 +629,9 @@ export default function SuppliersPage() {
 
       {/* Add/Edit Modal */}
       {isModalOpen && (
-<<<<<<< HEAD
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto" onClick={() => setIsModalOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden my-auto">
             <div className="relative flex items-center justify-center bg-[#044d73] p-4 text-white sm:p-6">
-=======
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm overflow-y-auto"
-          onClick={() => setIsModalOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden my-auto"
-          >
-            <div className="relative flex items-center justify-center bg-[#044d73] p-5 text-white sm:p-6">
->>>>>>> db6d4224199bcce5937a2b4a046fea6bc1b49b46
               <div className="hidden h-10 w-10 items-center justify-center text-white sm:flex">
                 <UserPlus className="h-6 w-6" />
               </div>

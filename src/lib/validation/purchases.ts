@@ -20,6 +20,7 @@ paymentType: z
   discount: z.number().nonnegative().default(0),
   freightCharges: z.number().nonnegative().default(0),
   vatRefund: z.number().nonnegative().default(0),
+  roundOff: z.number().default(0),
   vatRate: z.number().nonnegative().max(100).default(13),
   items: z.array(purchaseItemInputSchema).min(1),
 });
@@ -50,6 +51,7 @@ export const updatePurchaseSchema = z.object({
   discount: z.number().nonnegative().default(0),
   freightCharges: z.number().nonnegative().default(0),
   vatRefund: z.number().nonnegative().default(0),
+  roundOff: z.number().default(0),
   vatRate: z.number().nonnegative().max(100).default(13),
   items: z.array(updatePurchaseItemInputSchema).min(1),
 });

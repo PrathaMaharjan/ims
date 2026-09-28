@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { batches, products } from "@/db/schema";
-import { and, eq, SQL, sql } from "drizzle-orm";
+import { batches, products, suppliers } from "@/db/schema";
+import { and, asc, eq, gt, SQL, sql } from "drizzle-orm";
 
 const batchColumns = {
   id: true,
@@ -148,4 +148,150 @@ export interface ExpiryBatchesParams {
   withinDays: number;
   page: number;
   limit: number;
+}
+// get expire batches list
+export async function getExpiringBatches(
+  organizationId: string,
+  { status, withinDays, page, limit }: ExpiryBatchesParams,
+): Promise<ExpiryBatchesResult> {
+  const where = and(
+    eq(batches.organizationId, organizationId),
+    gt(batches.quantityAvailable, 0),
+    statusFilter(status, withinDays),
+  );
+  const [rows, countRows] = await Promise.all([
+    db
+      .select({
+        batchId: batches.id,
+        batchNumber: batches.batchNumber,
+        productId: batches.productId,
+        productName: products.name,
+        unit: products.unit,
+        supplierName: suppliers.name,
+        expiryDate: batches.expiryDate,
+        daysLeft: sql<number>`(${batches.expiryDate} - CURRENT_DATE)::int`,
+        quantityAvailable: batches.quantityAvailable,
+        purchasePrice: batches.purchasePrice,
+        valueAtRisk: sql<string>`(${batches.quantityAvailable} * ${batches.purchasePrice})`,
+        status: expiryStatusSql(withinDays),
+      })
+      .from(batches)
+      .innerJoin(products, eq(batches.productId, products.id))
+      .leftJoin(suppliers, eq(batches.supplierId, suppliers.id))
+      .where(where)
+      .orderBy(asc(batches.expiryDate), asc(batches.batchNumber))
+      .limit(limit)
+      .offset((page - 1) * limit),
+
+    db
+      .select({ total: sql<string>`count(*)` })
+      .from(batches)
+      .where(where),
+  ]);
+
+  const total = Number(countRows[0]?.total ?? 0);
+
+  return {
+    batches: rows.map((r) => ({
+      ...r,
+      purchasePrice: Number(r.purchasePrice),
+      valueAtRisk: Number(r.valueAtRisk),
+    })),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
+}
+
+// slaes garud
+export class BatchNotSellableError extends Error {
+  constructor(
+    message: string,
+    readonly batchId: string,
+    readonly reason: "EXPIRED" | "NOT_FOUND" | "INSUFFICIENT_STOCK",
+  ) {
+    super(message);
+    this.name = "BatchNotSellableError";
+  }
+}
+
+export async function assertBatchSellable(
+  tx: typeof db,
+  organizationId: string,
+  batchId: string,
+  quantity: number,
+): Promise<void> {
+  const [batch] = await tx
+    .select({
+      id: batches.id,
+      batchNumber: batches.batchNumber,
+      quantityAvailable: batches.quantityAvailable,
+      isExpired: sql<boolean>`${batches.expiryDate} < CURRENT_DATE`,
+    })
+    .from(batches)
+    .where(
+      and(eq(batches.id, batchId), eq(batches.organizationId, organizationId)),
+    );
+
+  if (!batch) {
+    throw new BatchNotSellableError("Batch not found", batchId, "NOT_FOUND");
+  }
+  if (batch.isExpired) {
+    throw new BatchNotSellableError(
+      `Batch ${batch.batchNumber} has expired and cannot be sold`,
+      batchId,
+      "EXPIRED",
+    );
+  }
+  if (batch.quantityAvailable < quantity) {
+    throw new BatchNotSellableError(
+      `Batch ${batch.batchNumber} has only ${batch.quantityAvailable} left`,
+      batchId,
+      "INSUFFICIENT_STOCK",
+    );
+  }
+}
+
+// expire summary
+export interface ExpirySummary {
+  expired: { count: number; value: number };
+  nearExpiry: { count: number; value: number };
+  withinDays: number;
+}
+
+export async function getExpirySummary(
+  organizationId: string,
+  withinDays: number,
+): Promise<ExpirySummary> {
+  const value = sql`${batches.quantityAvailable} * ${batches.purchasePrice}`;
+
+  const [row] = await db
+    .select({
+      expiredCount: sql<string>`count(*) filter (where ${batches.expiryDate} < CURRENT_DATE)`,
+      expiredValue: sql<string>`coalesce(sum(${value}) filter (where ${batches.expiryDate} < CURRENT_DATE), 0)`,
+
+      nearCount: sql<string>`count(*) filter (where ${batches.expiryDate} >= CURRENT_DATE AND ${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int)`,
+      nearValue: sql<string>`coalesce(sum(${value}) filter (where ${batches.expiryDate} >= CURRENT_DATE AND ${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int), 0)`,
+    })
+    .from(batches)
+    .where(
+      and(
+        eq(batches.organizationId, organizationId),
+        gt(batches.quantityAvailable, 0),
+      ),
+    );
+  return {
+    expired: {
+      count: Number(row?.expiredCount ?? 0),
+      value: Number(row?.expiredValue ?? 0),
+    },
+    nearExpiry: {
+      count: Number(row?.nearCount ?? 0),
+      value: Number(row?.nearValue ?? 0),
+    },
+    withinDays,
+  };
 }

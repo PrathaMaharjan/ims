@@ -131,6 +131,7 @@ export interface ExpiryBatchRow {
   purchasePrice: number;
   valueAtRisk: number; // quantityAvailable * purchasePrice — what a write-off costs
   status: ExpiryStatus;
+  note: string | null;
 }
 
 export interface ExpiryBatchesResult {
@@ -174,6 +175,7 @@ export async function getExpiringBatches(
         purchasePrice: batches.purchasePrice,
         valueAtRisk: sql<string>`(${batches.quantityAvailable} * ${batches.purchasePrice})`,
         status: expiryStatusSql(withinDays),
+        note: batches.note,
       })
       .from(batches)
       .innerJoin(products, eq(batches.productId, products.id))

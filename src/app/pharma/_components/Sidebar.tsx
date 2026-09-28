@@ -5,16 +5,17 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     ChevronLeft, ChevronRight, ChevronDown, LogOut, Menu, X,
-    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Contact,
+    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Contact, Layers,
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 
-type IconKey = 'dashboard' | 'inventory' | 'purchase' | 'sales' | 'customers' | 'suppliers' | 'expense' | 'analytics' | 'settings';
+type IconKey = 'dashboard' | 'inventory' | 'batches' | 'purchase' | 'sales' | 'customers' | 'suppliers' | 'expense' | 'analytics' | 'settings';
 
 const iconMap: Record<IconKey, LucideIcon> = {
     dashboard: LayoutDashboard,
     inventory: Boxes,
+    batches: Layers,
     purchase: Receipt,
     sales: ShoppingCart,
     customers: Contact,
@@ -52,6 +53,7 @@ const defaultEntries: NavEntry[] = [
             icon: 'inventory',
             items: [
                 { match: '/pharma/inventory', href: '/pharma/inventory', label: 'Inventory', icon: 'inventory' },
+                { match: '/pharma/batches', href: '/pharma/batches', label: 'Batches', icon: 'batches' },
                 { match: '/pharma/purchase', href: '/pharma/purchase', label: 'Purchase', icon: 'purchase' },
                 { match: '/pharma/sales', href: '/pharma/sales', label: 'Sales', icon: 'sales' },
             ],

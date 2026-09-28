@@ -1,30 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from './_components/Sidebar';
 import { useAuth } from '@/context/auth-context';
+import { api } from '@/lib/api-client';
 
 export default function PharmaLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const router = useRouter();
 
-  const [brandName, setBrandName] = useState("pharma");
-  const [logoUrl, setLogoUrl] = useState<string | undefined>(undefined);
+  const [brandName, setBrandName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem("pharma_business_name") || "";
+    }
+    return "";
+  });
+  const [logoUrl, setLogoUrl] = useState<string | undefined>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem("pharma_logo") || undefined;
+    }
+    return undefined;
+  });
+
+  const updateBrand = useCallback(() => {
+    try {
+      const savedName = localStorage.getItem("pharma_business_name");
+      const savedLogo = localStorage.getItem("pharma_logo");
+      if (savedName) setBrandName(savedName);
+      if (savedLogo) setLogoUrl(savedLogo);
+      else setLogoUrl(undefined);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
 
   useEffect(() => {
-    const updateBrand = () => {
-      try {
-        const savedName = localStorage.getItem("pharma_business_name");
-        const savedLogo = localStorage.getItem("pharma_logo");
-        if (savedName) setBrandName(savedName);
-        if (savedLogo) setLogoUrl(savedLogo);
-        else setLogoUrl(undefined);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-
     updateBrand();
     window.addEventListener("pharma_org_updated", updateBrand);
     window.addEventListener("storage", updateBrand);
@@ -32,7 +43,40 @@ export default function PharmaLayout({ children }: { children: React.ReactNode }
       window.removeEventListener("pharma_org_updated", updateBrand);
       window.removeEventListener("storage", updateBrand);
     };
-  }, []);
+  }, [updateBrand]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    let isMounted = true;
+    async function loadOrg() {
+      try {
+        const res = await api.get('/api/organization');
+        const org = res.data?.organization;
+        if (!isMounted || !org) return;
+
+        if (org.businessName) {
+          setBrandName(org.businessName);
+          localStorage.setItem("pharma_business_name", org.businessName);
+        }
+        if (org.logoUrl) {
+          setLogoUrl(org.logoUrl);
+          localStorage.setItem("pharma_logo", org.logoUrl);
+        } else {
+          setLogoUrl(undefined);
+          localStorage.removeItem("pharma_logo");
+        }
+      } catch (err) {
+        console.error("Failed to load organization for layout:", err);
+      }
+    }
+
+    loadOrg();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!isLoading && !user) {

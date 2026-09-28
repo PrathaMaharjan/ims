@@ -72,7 +72,17 @@ export default function SettingsPage() {
             setLoadError(null);
             try {
                 const orgRes = await api.get("/api/organization");
-                setOrgForm(orgRes.data.organization);
+                const org = orgRes.data.organization;
+                setOrgForm(org);
+                if (org?.businessName) {
+                    localStorage.setItem("pharma_business_name", org.businessName);
+                }
+                if (org?.logoUrl) {
+                    localStorage.setItem("pharma_logo", org.logoUrl);
+                } else {
+                    localStorage.removeItem("pharma_logo");
+                }
+                window.dispatchEvent(new Event("pharma_org_updated"));
             } catch {
                 setLoadError("Failed to load organization details.");
             } finally {
@@ -109,9 +119,19 @@ export default function SettingsPage() {
             }
 
             const res = await api.patch("/api/organization", payload);
-            setOrgForm(res.data.organization);
+            const updatedOrg = res.data.organization;
+            setOrgForm(updatedOrg);
             setPendingLogoDataUri(null);
             setLogoPreview(null);
+            if (updatedOrg?.businessName) {
+                localStorage.setItem("pharma_business_name", updatedOrg.businessName);
+            }
+            if (updatedOrg?.logoUrl) {
+                localStorage.setItem("pharma_logo", updatedOrg.logoUrl);
+            } else {
+                localStorage.removeItem("pharma_logo");
+            }
+            window.dispatchEvent(new Event("pharma_org_updated"));
             triggerToast("Organization details updated successfully!");
         } catch {
             triggerToast("Failed to save organization details.");

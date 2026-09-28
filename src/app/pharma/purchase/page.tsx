@@ -686,11 +686,11 @@ export default function PurchasePage() {
   /* ---- stats ---- */
 
   const stats = useMemo(() => ({
-    total: filteredPurchases.length,
-    amount: filteredPurchases.reduce((s, p) => s + Number(p.grandTotal || 0), 0),
-    cash: filteredPurchases.filter(p => p.paymentType === "CASH").length,
-    credit: filteredPurchases.filter(p => p.paymentType === "CREDIT").length,
-  }), [filteredPurchases]);
+    total: purchases.length,
+    amount: purchases.reduce((s, p) => s + Number(p.grandTotal || 0), 0),
+    cash: purchases.filter(p => p.paymentType === "CASH").length,
+    credit: purchases.filter(p => p.paymentType === "CREDIT").length,
+  }), [purchases]);
 
   /* ---- purchase modal ---- */
 
@@ -965,8 +965,8 @@ function buildPayload() {
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: isFiltered ? "Filtered Purchases" : "Total Purchases", value: stats.total, format: undefined, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Receipt className="h-5 w-5 sm:h-6 sm:w-6" /> },
-          { label: isFiltered ? "Filtered Spend" : "Total Spend", value: stats.amount, format: rs, border: "border-l-[#044d73]", iconBg: "bg-[#044d73]/10 text-[#044d73]", icon: <Wallet className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "Total Purchases", value: stats.total, format: undefined, border: "border-l-slate-400", iconBg: "bg-slate-50 text-slate-600", icon: <Receipt className="h-5 w-5 sm:h-6 sm:w-6" /> },
+          { label: "Total Spend", value: stats.amount, format: rs, border: "border-l-[#044d73]", iconBg: "bg-[#044d73]/10 text-[#044d73]", icon: <Wallet className="h-5 w-5 sm:h-6 sm:w-6" /> },
           { label: "Cash Purchases", value: stats.cash, format: undefined, border: "border-l-emerald-500", iconBg: "bg-emerald-50 text-emerald-600", icon: <Banknote className="h-5 w-5 sm:h-6 sm:w-6" /> },
           { label: "Credit Purchases", value: stats.credit, format: undefined, border: "border-l-amber-500", iconBg: "bg-amber-50 text-amber-600", icon: <CreditCard className="h-5 w-5 sm:h-6 sm:w-6" /> },
         ].map(s => (
@@ -985,135 +985,130 @@ function buildPayload() {
       </div>
 
       {/* Control Actions Panel (Search & Filters) */}
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            {/* Search Input */}
-            <div className="relative w-full sm:w-72 lg:w-80">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setCurrentPage(1);
-                }}
-                placeholder="Search invoice #, supplier, medicine, batch..."
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73] transition-all"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearch("");
-                    setCurrentPage(1);
-                  }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
-                  title="Clear search"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Payment Filter */}
-            <select
-              value={paymentFilter}
-              onChange={(e) => {
-                setPaymentFilter(e.target.value);
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-wrap">
+        {/* Search Input */}
+        <div className="relative flex-1 min-w-0 sm:min-w-[220px] w-full sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder="Search invoice, supplier, medicine, batch..."
+            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
                 setCurrentPage(1);
               }}
-              className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
+              title="Clear search"
             >
-              <option value="ALL">All Payments</option>
-              <option value="CASH">Cash</option>
-              <option value="CREDIT">Credit</option>
-            </select>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
 
-            {/* Purc Type Filter */}
-            <select
-              value={purcTypeFilter}
+        {/* Payment Filter */}
+        <select
+          value={paymentFilter}
+          onChange={(e) => {
+            setPaymentFilter(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
+        >
+          <option value="ALL">All Payments</option>
+          <option value="CASH">Cash</option>
+          <option value="CREDIT">Credit</option>
+        </select>
+
+        {/* Purc Type Filter */}
+        <select
+          value={purcTypeFilter}
+          onChange={(e) => {
+            setPurcTypeFilter(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
+        >
+          <option value="ALL">All Purc Types</option>
+          <option value="VAT_EXEMPT">VAT/Exempt</option>
+          <option value="VAT_ITEM_WISE">VAT/Item-wise</option>
+          <option value="VAT_TAX_INCL">VAT/TaxIncl.</option>
+        </select>
+
+        {/* Supplier Filter */}
+        <select
+          value={supplierFilter}
+          onChange={(e) => {
+            setSupplierFilter(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none max-w-[180px] truncate"
+        >
+          <option value="ALL">All Suppliers</option>
+          {suppliers.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Date Range */}
+        <div className="flex items-center gap-1.5">
+          <div className="relative">
+            <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
               onChange={(e) => {
-                setPurcTypeFilter(e.target.value);
+                setDateFrom(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
-            >
-              <option value="ALL">All Purc Types</option>
-              <option value="VAT_EXEMPT">VAT/Exempt</option>
-              <option value="VAT_ITEM_WISE">VAT/Item-wise</option>
-              <option value="VAT_TAX_INCL">VAT/TaxIncl.</option>
-            </select>
-
-            {/* Supplier Filter */}
-            <select
-              value={supplierFilter}
-              onChange={(e) => {
-                setSupplierFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full sm:w-auto max-w-[200px] truncate rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
-            >
-              <option value="ALL">All Suppliers</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              className="w-32 rounded-lg border border-slate-200 bg-white py-2.5 pl-8 pr-2 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none"
+              title="From Date"
+            />
           </div>
-
-          {/* Date range filters + reset */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-36">
-                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="date"
-                  value={dateFrom}
-                  max={dateTo || undefined}
-                  onChange={(e) => {
-                    setDateFrom(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-2.5 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
-                  title="From Date"
-                />
-              </div>
-              <span className="text-xs text-slate-400">to</span>
-              <div className="relative flex-1 sm:w-36">
-                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="date"
-                  value={dateTo}
-                  min={dateFrom || undefined}
-                  onChange={(e) => {
-                    setDateTo(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-2.5 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
-                  title="To Date"
-                />
-              </div>
-            </div>
-
-            {isFiltered && (
-              <button
-                type="button"
-                onClick={clearAllFilters}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-colors"
-                title="Reset all filters"
-              >
-                <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
-                Reset
-              </button>
-            )}
+          <span className="text-xs text-slate-400">to</span>
+          <div className="relative">
+            <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-32 rounded-lg border border-slate-200 bg-white py-2.5 pl-8 pr-2 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none"
+              title="To Date"
+            />
           </div>
         </div>
+
+        {/* Reset Filter Button */}
+        {isFiltered && (
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-2.5 text-xs font-medium text-slate-700 transition-colors shrink-0"
+            title="Reset all filters"
+          >
+            <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
+            Reset
+          </button>
+        )}
       </div>
 
       {/* Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[380px]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">

@@ -206,6 +206,34 @@ export default function BatchesPage() {
     [statusFilter, withinDays],
   );
 
+  const [staticStats, setStaticStats] = useState({
+    total: 0,
+    active: 0,
+    nearExpiry: 0,
+    expired: 0,
+  });
+
+  const loadStaticStats = useCallback(async (days = withinDays) => {
+    try {
+      const res = await api.get("/api/batches", {
+        params: { status: "all", withinDays: days, page: 1, limit: 1 },
+      });
+      if (res.data) {
+        const total = res.data.pagination?.total ?? 0;
+        const expired = res.data.summary?.expired.count ?? 0;
+        const nearExpiry = res.data.summary?.nearExpiry.count ?? 0;
+        const active = Math.max(0, total - expired - nearExpiry);
+        setStaticStats({ total, active, nearExpiry, expired });
+      }
+    } catch (err) {
+      console.error("Failed to load batch stats:", err);
+    }
+  }, [withinDays]);
+
+  useEffect(() => {
+    loadStaticStats(withinDays);
+  }, [withinDays, loadStaticStats]);
+
   useEffect(() => {
     fetchBatches(1, statusFilter, withinDays);
   }, [statusFilter, withinDays, fetchBatches]);
@@ -284,7 +312,10 @@ export default function BatchesPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => fetchBatches(pagination.page)}
+            onClick={() => {
+              fetchBatches(pagination.page);
+              loadStaticStats(withinDays);
+            }}
             disabled={loading}
             className="flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
           >
@@ -306,33 +337,28 @@ export default function BatchesPage() {
         {[
           {
             label: "Total Batches",
-            value: pagination.total,
+            value: staticStats.total,
             border: "border-l-slate-400",
             iconBg: "bg-slate-50 text-slate-600",
             icon: <Layers className="h-5 w-5 sm:h-6 sm:w-6" />,
           },
           {
             label: "Active Batches",
-            value: Math.max(
-              0,
-              pagination.total -
-              (summary?.expired.count ?? 0) -
-              (summary?.nearExpiry.count ?? 0),
-            ),
+            value: staticStats.active,
             border: "border-l-emerald-500",
             iconBg: "bg-emerald-50 text-emerald-600",
             icon: <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6" />,
           },
           {
             label: `Near Expiry (≤${withinDays}d)`,
-            value: summary?.nearExpiry.count ?? 0,
+            value: staticStats.nearExpiry,
             border: "border-l-amber-500",
             iconBg: "bg-amber-50 text-amber-600",
             icon: <Clock className="h-5 w-5 sm:h-6 sm:w-6" />,
           },
           {
             label: "Expired Batches",
-            value: summary?.expired.count ?? 0,
+            value: staticStats.expired,
             border: "border-l-red-500",
             iconBg: "bg-red-50 text-red-500",
             icon: <ShieldAlert className="h-5 w-5 sm:h-6 sm:w-6" />,
@@ -359,71 +385,67 @@ export default function BatchesPage() {
         ))}
       </div>
 
-      {/* Filter Bar (Cleaned: removed 10/page and redundant all filter) */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between flex-wrap">
-        <div className="flex items-center gap-3 flex-1 min-w-[240px] max-w-md">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by batch, product, supplier"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Expiry Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) =>
-              setStatusFilter(e.target.value as StatusFilterOption)
-            }
-            className={selectCls}
-            title="Filter by status"
-          >
-            <option value="all">All Statuses</option>
-            <option value="expired">Expired</option>
-            <option value="near">Near Expiry</option>
-            <option value="ok">Active / Safe</option>
-          </select>
-
-          {/* Near Expiry Window selector */}
-          <select
-            value={withinDays}
-            onChange={(e) => setWithinDays(Number(e.target.value))}
-            className={selectCls}
-            title="Near expiry window"
-          >
-            <option value={15}>Near expiry: 15 days</option>
-            <option value={30}>Near expiry: 30 days</option>
-            <option value={60}>Near expiry: 60 days</option>
-            <option value={90}>Near expiry: 90 days</option>
-            <option value={180}>Near expiry: 180 days</option>
-            <option value={365}>Near expiry: 365 days</option>
-          </select>
-
-          {/* Active status indicator & reset */}
-          {statusFilter !== "all" && (
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-wrap">
+        <div className="relative flex-1 min-w-0 sm:min-w-[200px] w-full sm:max-w-sm">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search by batch, product, supplier"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+          />
+          {searchQuery && (
             <button
-              onClick={() => setStatusFilter("all")}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition-colors"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
             >
-              <span>Filtering: <strong className="capitalize">{statusFilter === "near" ? "Near Expiry" : statusFilter === "ok" ? "Active" : statusFilter}</strong></span>
-              <X className="w-3.5 h-3.5 text-slate-500" />
+              <X className="h-4 w-4" />
             </button>
           )}
         </div>
+
+        {/* Expiry Status Filter */}
+        <select
+          value={statusFilter}
+          onChange={(e) =>
+            setStatusFilter(e.target.value as StatusFilterOption)
+          }
+          className={selectCls}
+          title="Filter by status"
+        >
+          <option value="all">All Statuses</option>
+          <option value="expired">Expired</option>
+          <option value="near">Near Expiry</option>
+          <option value="ok">Active / Safe</option>
+        </select>
+
+        {/* Near Expiry Window selector */}
+        <select
+          value={withinDays}
+          onChange={(e) => setWithinDays(Number(e.target.value))}
+          className={selectCls}
+          title="Near expiry window"
+        >
+          <option value={15}>Near expiry: 15 days</option>
+          <option value={30}>Near expiry: 30 days</option>
+          <option value={60}>Near expiry: 60 days</option>
+          <option value={90}>Near expiry: 90 days</option>
+          <option value={180}>Near expiry: 180 days</option>
+          <option value={365}>Near expiry: 365 days</option>
+        </select>
+
+        {/* Active status indicator & reset */}
+        {statusFilter !== "all" && (
+          <button
+            onClick={() => setStatusFilter("all")}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition-colors shrink-0"
+          >
+            <span>Filtering: <strong className="capitalize">{statusFilter === "near" ? "Near Expiry" : statusFilter === "ok" ? "Active" : statusFilter}</strong></span>
+            <X className="w-3.5 h-3.5 text-slate-500" />
+          </button>
+        )}
       </div>
 
       {/* Table */}

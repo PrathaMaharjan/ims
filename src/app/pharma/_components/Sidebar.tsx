@@ -108,15 +108,17 @@ function Brand({
     collapsed: boolean;
     onToggleCollapse: () => void;
 }) {
+    const initial = brandName ? brandName.trim().charAt(0).toUpperCase() : "";
+
     return (
         <div className={`flex items-center pt-6 pb-5 ${collapsed ? 'flex-col gap-2 px-3' : 'gap-3 px-4'}`}>
             <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
                 {logoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoUrl} alt={brandName} className="h-full w-full object-cover" />
+                    <img src={logoUrl} alt={brandName || "Logo"} className="h-full w-full object-cover" />
                 ) : (
                     <span className="text-lg font-bold text-[#044d73]">
-                        {brandName.charAt(0).toUpperCase()}
+                        {initial}
                     </span>
                 )}
             </div>
@@ -360,10 +362,10 @@ export function Sidebar({ entries = defaultEntries, brandName, logoUrl, user }: 
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
                     {logoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={logoUrl} alt={brandName} className="h-full w-full object-cover" />
+                        <img src={logoUrl} alt={brandName || "Logo"} className="h-full w-full object-cover" />
                     ) : (
                         <span className="text-xs font-bold text-[#044d73]">
-                            {brandName.charAt(0).toUpperCase()}
+                            {brandName ? brandName.trim().charAt(0).toUpperCase() : ""}
                         </span>
                     )}
                 </div>
@@ -386,9 +388,11 @@ export function Sidebar({ entries = defaultEntries, brandName, logoUrl, user }: 
                             <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
                                 {logoUrl ? (
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={logoUrl} alt={brandName} className="h-full w-full object-cover" />
+                                    <img src={logoUrl} alt={brandName || "Logo"} className="h-full w-full object-cover" />
                                 ) : (
-                                    <span className="text-lg font-bold text-[#044d73]">{brandName.charAt(0).toUpperCase()}</span>
+                                    <span className="text-lg font-bold text-[#044d73]">
+                                        {brandName ? brandName.trim().charAt(0).toUpperCase() : ""}
+                                    </span>
                                 )}
                             </div>
                             <span className="truncate text-base font-bold text-white">{brandName}</span>

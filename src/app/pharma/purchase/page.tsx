@@ -4,11 +4,12 @@ import { useState, useMemo, useRef, useEffect, Fragment, useCallback } from "rea
 import {
   Plus, X, Pencil, Trash2, Search, ChevronDown, ChevronLeft, ChevronRight,
   Receipt, Wallet, CreditCard, Banknote, PackagePlus, Percent, Boxes, Check,
-  AlertCircle, Calendar, RotateCcw,
+  AlertCircle, Calendar, RotateCcw, Printer,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 import { DotsLoader } from "../_components/ui/dots-loader";
+import { TaxInvoiceModal, TaxInvoiceData, InvoiceItem } from "../_components/TaxInvoiceModal";
 
 /* ------------------------------------------------------------------ */
 /* Types — matches the real backend shapes                             */
@@ -31,6 +32,7 @@ interface Product {
   name: string;
   aliasName: string | null;
   manufacturer: string | null;
+  hsnCode?: string | null;
   unit: string;
   alternativeUnit: string | null;
   stockQuantity: number;
@@ -41,6 +43,9 @@ interface Supplier {
   name: string;
   contactPerson?: string | null;
   phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  panVatNumber?: string | null;
   paymentTerms?: string | null;
   status?: boolean;
 }
@@ -523,6 +528,7 @@ export default function PurchasePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
   const [viewingPurchase, setViewingPurchase] = useState<PurchaseRecord | null>(null);
+  const [printInvoiceData, setPrintInvoiceData] = useState<TaxInvoiceData | null>(null);
   const [form, setForm] = useState<PurchaseForm>(() => emptyForm());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -701,6 +707,71 @@ export default function PurchasePage() {
     setSaveError(null);
     setIsModalOpen(true);
   }
+
+  function generateRandomInvoiceNo(seed?: string): string {
+    if (!seed) return String(Math.floor(100000 + Math.random() * 900000));
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash << 5) - hash + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    return String(100000 + (Math.abs(hash) % 900000));
+  }
+
+  const handlePrintPurchase = (purchase: PurchaseRecord) => {
+    const partyObj = suppliers.find((s) => s.id === purchase.party?.id) || purchase.party;
+    let vatableTotal = 0;
+    let nonVatableTotal = 0;
+
+    const items: InvoiceItem[] = purchase.items.map((li, index) => {
+      const prod = products.find((p) => p.id === li.productId);
+      const isVat = li.vatApplicable !== false;
+      const amt = Number(li.lineTotal);
+      if (isVat) {
+        vatableTotal += amt;
+      } else {
+        nonVatableTotal += amt;
+      }
+
+      return {
+        sn: index + 1,
+        itemCode: prod?.aliasName || `ITM-${String(index + 1).padStart(3, "0")}`,
+        hsNo: prod?.hsnCode || "—",
+        name: prod?.name || "Product",
+        company: prod?.manufacturer || "—",
+        quantity: Number(li.quantity),
+        unit: prod?.unit || "Pcs",
+        rate: Number(li.purchaseRate),
+        amount: amt,
+        batchNumber: li.batchNumber,
+        expiryDate: li.expiryDate,
+      };
+    });
+
+    const discount = Number(purchase.discount || 0);
+    const taxableAmount = Math.max(0, vatableTotal - discount);
+
+    setPrintInvoiceData({
+      type: "PURCHASE",
+      invoiceNumber: purchase.supplierInvoiceNumber || generateRandomInvoiceNo(purchase.id),
+      date: purchase.purchaseDate ? purchase.purchaseDate.split("T")[0] : "",
+      partyName: partyObj?.name || (purchase.party?.name ?? "Supplier"),
+      partyAddress: (partyObj as any)?.address || undefined,
+      partyPan: (partyObj as any)?.panVatNumber || undefined,
+      partyPhone: (partyObj as any)?.phone || undefined,
+      paymentType: purchase.paymentType,
+      items,
+      subtotal: Number(purchase.subtotal),
+      discount,
+      freightCharges: Number(purchase.freightCharges || 0),
+      vatRefund: Number(purchase.vatRefund || 0),
+      taxableAmount: Number(purchase.vatAmount) > 0 ? taxableAmount : (vatableTotal > 0 ? taxableAmount : 0),
+      nonTaxableAmount: nonVatableTotal,
+      vatAmount: Number(purchase.vatAmount || 0),
+      roundOff: Number(purchase.roundOff || 0),
+      grandTotal: Number(purchase.grandTotal),
+    });
+  };
 
   async function openEdit(record: PurchaseRecord) {
     setEditingPurchaseId(record.id);
@@ -1193,6 +1264,17 @@ function buildPayload() {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePrintPurchase(p);
+                          }}
+                          title="Print / Download Purchase Voucher"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={(e) => { e.stopPropagation(); openEdit(p); }}
                           title="Edit Purchase"
                           className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
@@ -1392,13 +1474,22 @@ function buildPayload() {
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-white p-3.5 sm:p-4 px-4 sm:px-6">
-              <button
-                type="button"
-                onClick={() => { const p = viewingPurchase; setViewingPurchase(null); openEdit(p); }}
-                className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-[#044d73]/5 hover:bg-[#044d73]/10 px-4 py-2 text-xs font-semibold text-[#044d73] transition-colors"
-              >
-                <Pencil className="w-3.5 h-3.5" /> Edit Purchase
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePrintPurchase(viewingPurchase)}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#044d73] hover:bg-[#033b59] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print / Download Voucher
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { const p = viewingPurchase; setViewingPurchase(null); openEdit(p); }}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-[#044d73]/5 hover:bg-[#044d73]/10 px-4 py-2 text-xs font-semibold text-[#044d73] transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Edit Purchase
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => setViewingPurchase(null)}
@@ -1502,10 +1593,11 @@ function buildPayload() {
                         <thead>
                           <tr className="bg-slate-50/90 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                             <th className="py-3 px-3 w-10 text-center">#</th>
-                            <th className="py-3 px-3 min-w-[260px]">Item Name</th>
+                            <th className="py-3 px-3 min-w-[240px]">Item Name</th>
                             <th className="py-3 px-2.5 w-[90px]">Qty</th>
                             <th className="py-3 px-2 w-[70px] text-center">Unit</th>
                             <th className="py-3 px-2.5 w-[110px]">Pur. Rate</th>
+                            <th className="py-3 px-2 w-[85px] text-center">VAT</th>
                             <th className="py-3 px-3 w-[110px] text-right">Amount</th>
                             <th className="py-3 px-3 min-w-[220px]">Batch Details</th>
                             <th className="py-3 px-2 w-[50px] text-center"></th>
@@ -1560,6 +1652,19 @@ function buildPayload() {
                                       onChange={e => updateLine(line.id, { price: e.target.value === "" ? "" : Number(e.target.value) })}
                                       className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                                     />
+                                  </td>
+                                  <td className="py-3 px-2 text-center">
+                                    <label className="inline-flex items-center gap-1.5 cursor-pointer select-none py-1.5 px-2 rounded-lg hover:bg-slate-100/80 transition-colors">
+                                      <input
+                                        type="checkbox"
+                                        checked={line.vatApplicable}
+                                        onChange={e => updateLine(line.id, { vatApplicable: e.target.checked })}
+                                        className="h-4 w-4 rounded border-slate-300 text-[#044d73] focus:ring-[#044d73] cursor-pointer"
+                                      />
+                                      <span className={`text-[11px] font-bold ${line.vatApplicable ? "text-emerald-600" : "text-slate-400"}`}>
+                                        {line.vatApplicable ? "13%" : "0%"}
+                                      </span>
+                                    </label>
                                   </td>
                                   <td className="py-3 px-3 text-right font-bold text-slate-800">
                                     <div className="flex h-9 items-center justify-end">{rs(lineAmount(line))}</div>
@@ -1853,6 +1958,14 @@ function buildPayload() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Tax Invoice / Purchase Voucher Modal for Printing / PDF Download */}
+      {printInvoiceData && (
+        <TaxInvoiceModal
+          data={printInvoiceData}
+          onClose={() => setPrintInvoiceData(null)}
+        />
       )}
     </div>
   );

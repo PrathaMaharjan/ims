@@ -97,14 +97,14 @@ export default function PharmaLayout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-50">
+    <div className="flex min-h-screen bg-zinc-50 print:bg-white print:min-h-0 print:block">
       <Sidebar
         brandName={brandName}
         logoUrl={logoUrl}
         user={{ name: user.name, email: user.email }}
       />
 
-      <main className="flex-1 min-w-0 p-3.5 sm:p-5 md:p-6 pt-[4.5rem] md:pt-6">
+      <main className="flex-1 min-w-0 p-3.5 sm:p-5 md:p-6 pt-[4.5rem] md:pt-6 print:p-0 print:pt-0 print:m-0 print:w-full">
         {children}
       </main>
     </div>

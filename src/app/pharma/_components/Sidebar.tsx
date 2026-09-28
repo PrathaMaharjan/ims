@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     ChevronLeft, ChevronRight, ChevronDown, LogOut, Menu, X,
-    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Layers,
+    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Layers, FileText,
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 
-type IconKey = 'dashboard' | 'inventory' | 'batches' | 'purchase' | 'sales' | 'parties' | 'expense' | 'analytics' | 'settings';
+type IconKey = 'dashboard' | 'inventory' | 'batches' | 'purchase' | 'sales' | 'parties' | 'ledger' | 'expense' | 'analytics' | 'settings';
 
 const iconMap: Record<IconKey, LucideIcon> = {
     dashboard: LayoutDashboard,
@@ -19,6 +19,7 @@ const iconMap: Record<IconKey, LucideIcon> = {
     purchase: Receipt,
     sales: ShoppingCart,
     parties: Users,
+    ledger: FileText,
     expense: Wallet,
     analytics: BarChart3,
     settings: Settings,
@@ -66,6 +67,7 @@ const defaultEntries: NavEntry[] = [
             label: 'Finance',
             icon: 'expense',
             items: [
+                { match: '/pharma/parties/ledger', href: '/pharma/parties/ledger', label: 'Party Ledger', icon: 'ledger' },
                 { match: '/pharma/expense', href: '/pharma/expense', label: 'Expense', icon: 'expense' },
                 { match: '/pharma/analytics', href: '/pharma/analytics', label: 'Analytics', icon: 'analytics' },
             ],
@@ -193,7 +195,12 @@ function NavList({
     onNavigate?: () => void;
 }) {
     const pathname = usePathname();
-    const isActive = (path: string) => pathname === path;
+    const isActive = (path: string) => {
+        if (path === '/pharma') return pathname === '/pharma';
+        if (path === '/pharma/parties/ledger') return pathname.includes('/ledger');
+        if (path === '/pharma/parties') return pathname.startsWith('/pharma/parties') && !pathname.includes('/ledger');
+        return pathname === path || pathname.startsWith(path + '/');
+    };
     const groupContainsActive = (group: NavGroup) => group.items.some((i) => isActive(i.match));
 
     const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
@@ -330,7 +337,7 @@ export function Sidebar({ entries = defaultEntries, brandName, logoUrl, user }: 
         <>
             {/* Desktop */}
             <aside
-                className={`sticky top-3 m-3 hidden h-[calc(100dvh-1.5rem)] shrink-0 self-start flex-col rounded-3xl bg-[#044d73] shadow-sm transition-[width] duration-300 md:flex ${collapsed ? 'w-20' : 'w-64'
+                className={`sticky top-3 m-3 hidden h-[calc(100dvh-1.5rem)] shrink-0 self-start flex-col rounded-3xl bg-[#044d73] shadow-sm transition-[width] duration-300 md:flex print:hidden ${collapsed ? 'w-20' : 'w-64'
                     }`}
             >
                 <Brand brandName={brandName} logoUrl={logoUrl} collapsed={collapsed} onToggleCollapse={() => setCollapsed((c) => !c)} />
@@ -339,7 +346,7 @@ export function Sidebar({ entries = defaultEntries, brandName, logoUrl, user }: 
             </aside>
 
             {/* Mobile top bar */}
-            <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center gap-3 bg-[#044d73] px-4 md:hidden">
+            <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center gap-3 bg-[#044d73] px-4 md:hidden print:hidden">
                 <button
                     onClick={() => setMobileOpen(true)}
                     aria-label="Open menu"
@@ -362,7 +369,7 @@ export function Sidebar({ entries = defaultEntries, brandName, logoUrl, user }: 
 
             {/* Mobile drawer */}
             {mobileOpen && (
-                <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+                <div className="fixed inset-0 z-40 md:hidden print:hidden" role="dialog" aria-modal="true" aria-label="Menu">
                     <div className="absolute inset-0 bg-zinc-900/40" onClick={() => setMobileOpen(false)} />
                     <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col rounded-r-3xl bg-[#044d73] shadow-xl">
                         <button

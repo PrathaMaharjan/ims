@@ -51,3 +51,14 @@ body {
   animation: dot-bounce 1.2s infinite ease-in-out both;
 }
 
+@media print {
+  @page {
+    size: auto;
+    margin: 8mm 10mm;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+}
+

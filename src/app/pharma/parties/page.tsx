@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   UserPlus,
   Search,
@@ -17,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
+  FileText,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
@@ -488,6 +490,13 @@ export default function PartiesPage() {
                         </td>
                         <td className="py-4 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                            <Link
+                              href={`/pharma/parties/${party.id}/ledger`}
+                              className="rounded-md p-1.5 text-slate-400 hover:bg-[#044d73]/10 hover:text-[#044d73] transition-colors"
+                              title="View Party Ledger & Statement"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </Link>
                             <button
                               onClick={() => handleOpenEdit(party)}
                               className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-[#044d73] transition-colors"
@@ -573,6 +582,13 @@ export default function PartiesPage() {
                     </div>
 
                     <div className="flex items-center justify-end gap-2 border-t border-slate-100/80 pt-3">
+                      <Link
+                        href={`/pharma/parties/${party.id}/ledger`}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-[#044d73]/30 bg-[#044d73]/5 py-2 text-xs font-semibold text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        Ledger
+                      </Link>
                       <button
                         onClick={() => handleOpenEdit(party)}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-200 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
@@ -582,10 +598,10 @@ export default function PartiesPage() {
                       </button>
                       <button
                         onClick={() => setDeleteTarget(party)}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-red-100 py-2 text-xs font-medium text-red-600 bg-red-50/30 hover:bg-red-50 transition-colors"
+                        className="flex items-center justify-center gap-1.5 rounded-md border border-red-100 p-2 text-xs font-medium text-red-600 bg-red-50/30 hover:bg-red-50 transition-colors"
+                        title="Delete Party"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                        Delete
                       </button>
                     </div>
                   </div>

@@ -28,7 +28,9 @@ import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 type StockLevel = "in_stock" | "low_stock" | "out_of_stock";
 type Num = number | "";
 
-// Matches GET /products/:id/batches response shape
+// Matches GET /products/:id/batches response shape. `status` and `daysLeft`
+// are computed server-side by listBatchesForProduct — never recompute them
+// here, or this page can disagree with the expiry report on the same batch.
 export interface ApiBatch {
   id: string;
   batchNumber: string;
@@ -39,13 +41,8 @@ export interface ApiBatch {
   salePrice: string | null;
   quantityReceived: number;
   quantityAvailable: number;
-  status:
-    | "ACTIVE"
-    | "NEAR_EXPIRY"
-    | "EXPIRED"
-    | "RECALLED"
-    | "QUARANTINED"
-    | "DEPLETED";
+  status: "ACTIVE" | "NEAR_EXPIRY" | "EXPIRED";
+  daysLeft: number; // negative once expired
   supplier?: { id: string; name: string } | null;
   note?: string | null;
   notes?: string | null;
@@ -201,28 +198,26 @@ const STOCK_STYLE: Record<
   },
 };
 
-function getBatchExpiryStatus(expDate: string): { label: string; cls: string } {
-  if (!expDate)
-    return {
-      label: "No Date",
-      cls: "text-slate-500 bg-slate-100 border-slate-200",
-    };
-  const today = new Date();
-  const exp = new Date(expDate);
-  const diffMonths =
-    (exp.getFullYear() - today.getFullYear()) * 12 +
-    (exp.getMonth() - today.getMonth());
-  if (diffMonths < 0)
-    return { label: "Expired", cls: "text-red-700 bg-red-50 border-red-200" };
-  if (diffMonths <= 3)
-    return {
-      label: "Expiring Soon",
-      cls: "text-amber-700 bg-amber-50 border-amber-200",
-    };
-  return {
-    label: "Active",
-    cls: "text-emerald-700 bg-emerald-50 border-emerald-200",
-  };
+// Presentation only — status and daysLeft themselves come straight from the
+// API (listBatchesForProduct), so this page can never disagree with the
+// expiry report on where a batch stands.
+const EXPIRY_STATUS_STYLE: Record<ApiBatch["status"], string> = {
+  EXPIRED: "text-red-700 bg-red-50 border-red-200",
+  NEAR_EXPIRY: "text-amber-700 bg-amber-50 border-amber-200",
+  ACTIVE: "text-emerald-700 bg-emerald-50 border-emerald-200",
+};
+
+const EXPIRY_STATUS_LABEL: Record<ApiBatch["status"], string> = {
+  EXPIRED: "Expired",
+  NEAR_EXPIRY: "Near Expiry",
+  ACTIVE: "Active",
+};
+
+function formatExpiryLabel(status: ApiBatch["status"], daysLeft: number): string {
+  const statusLabel = EXPIRY_STATUS_LABEL[status];
+  if (status === "EXPIRED") return `${statusLabel} · ${Math.abs(daysLeft)}d ago`;
+  if (daysLeft === 0) return `${statusLabel} · expires today`;
+  return `${statusLabel} · ${daysLeft}d left`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1295,9 +1290,6 @@ export default function InventoryPage() {
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {viewingBatches.map((b) => {
-                              const expStatus = getBatchExpiryStatus(
-                                b.expiryDate,
-                              );
                               const isExpanded = expandedBatchIds.includes(
                                 b.id,
                               );
@@ -1342,9 +1334,9 @@ export default function InventoryPage() {
                                     </td>
                                     <td className="py-3 px-3">
                                       <span
-                                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${expStatus.cls}`}
+                                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${EXPIRY_STATUS_STYLE[b.status]}`}
                                       >
-                                        {expStatus.label}
+                                        {formatExpiryLabel(b.status, b.daysLeft)}
                                       </span>
                                     </td>
                                   </tr>

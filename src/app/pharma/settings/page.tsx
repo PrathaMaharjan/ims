@@ -63,9 +63,7 @@ export default function SettingsPage() {
         setTimeout(() => setToastMessage(null), 3000);
     }
 
-    // Organization data and user profile are independent — fetch in parallel.
-    // (User profile isn't refetched here since AuthProvider already holds it
-    // via /auth/me; we just seed the form from context once it's available.)
+
     useEffect(() => {
         async function loadSettings() {
             setLoading(true);

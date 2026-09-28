@@ -10,11 +10,12 @@ import {
     AlertTriangle,
     ShoppingCart,
     Clock,
-    Plus,
     ArrowUpRight,
     BarChart3,
     DollarSign,
     RotateCcw,
+    ChevronLeft,
+    ChevronRight,
 } from "lucide-react";
 import {
     ComposedChart,
@@ -121,9 +122,12 @@ export default function DashboardPage() {
     const [stats, setStats] = useState<SummaryStats | null>(null);
     const [inventoryStatus, setInventoryStatus] = useState<InventoryStatus | null>(null);
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+    const [watchlistPage, setWatchlistPage] = useState(1);
     const [transactions, setTransactions] = useState<TransactionItem[]>([]);
     const [breakdown, setBreakdown] = useState<BreakdownSlice[]>([]);
     const [trend, setTrend] = useState<TrendPoint[]>([]);
+
+    const WATCHLIST_PAGE_SIZE = 5;
 
     useEffect(() => {
         let cancelled = false;
@@ -192,6 +196,13 @@ export default function DashboardPage() {
         Expenses: t.expenses,
         "Net Profit": t.netProfit,
     }));
+
+    const totalWatchlistPages = Math.max(1, Math.ceil(watchlist.length / WATCHLIST_PAGE_SIZE));
+    const safeWatchlistPage = Math.min(watchlistPage, totalWatchlistPages);
+    const paginatedWatchlist = watchlist.slice(
+        (safeWatchlistPage - 1) * WATCHLIST_PAGE_SIZE,
+        safeWatchlistPage * WATCHLIST_PAGE_SIZE
+    );
 
     return (
         <div className="flex flex-col gap-8 pb-12">
@@ -472,60 +483,93 @@ export default function DashboardPage() {
 
             {/* Bottom Section: Critical Stock Watchlist & Recent Transactions */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-4 min-w-0">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <div className="flex items-center gap-2">
-                            <AlertTriangle className="h-4 w-4 text-amber-500" />
-                            <h3 className="text-sm font-bold text-slate-900">Critical Stock & Expiry Watchlist</h3>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-4 min-w-0 flex flex-col justify-between">
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2">
+                                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                                <h3 className="text-sm font-bold text-slate-900">Critical Stock & Expiry Watchlist</h3>
+                                {watchlist.length > 0 && (
+                                    <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                        {watchlist.length}
+                                    </span>
+                                )}
+                            </div>
+                            <Link href="/pharma/inventory" className="text-xs font-semibold text-[#044d73] hover:underline flex items-center gap-1">
+                                View All Items
+                                <ArrowUpRight className="h-3.5 w-3.5" />
+                            </Link>
                         </div>
-                        <Link href="/pharma/inventory" className="text-xs font-semibold text-[#044d73] hover:underline flex items-center gap-1">
-                            View All Items
-                            <ArrowUpRight className="h-3.5 w-3.5" />
-                        </Link>
-                    </div>
 
-                    <div className="divide-y divide-slate-100">
-                        {watchlist.map((item, i) => (
-                            <div key={`${item.name}-${item.batchNumber ?? i}`} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
-                                <div className="min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <h4 className="text-xs font-bold text-slate-800 truncate">{item.name}</h4>
-                                        {item.manufacturer && (
-                                            <span className="text-[10px] font-semibold text-[#044d73] bg-[#044d73]/10 px-1.5 rounded shrink-0">
-                                                {item.manufacturer}
-                                            </span>
+                        <div className="divide-y divide-slate-100">
+                            {paginatedWatchlist.map((item, i) => (
+                                <div key={`${item.name}-${item.batchNumber ?? i}`} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="text-xs font-bold text-slate-800 truncate">{item.name}</h4>
+                                            {item.manufacturer && (
+                                                <span className="text-[10px] font-semibold text-[#044d73] bg-[#044d73]/10 px-1.5 rounded shrink-0">
+                                                    {item.manufacturer}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {item.batchNumber && (
+                                            <p className="text-[11px] text-slate-400 mt-0.5">
+                                                Batch: {item.batchNumber} · Exp: {item.expiryDate}
+                                            </p>
                                         )}
                                     </div>
-                                    {item.batchNumber && (
-                                        <p className="text-[11px] text-slate-400 mt-0.5">
-                                            Batch: {item.batchNumber} · Exp: {item.expiryDate}
-                                        </p>
-                                    )}
-                                </div>
 
-                                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                                    <div>
-                                        <span className="text-xs font-bold text-slate-800 block">
-                                            {item.quantityAvailable} / {item.quantityReceived ?? "—"}
-                                        </span>
-                                        <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${WATCHLIST_STATUS_STYLE[item.status]}`}>
-                                            {WATCHLIST_STATUS_LABEL[item.status]}
-                                        </span>
+                                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                                        <div className="text-right">
+                                            <span className="text-xs font-bold text-slate-800 block">
+                                                {item.quantityAvailable} / {item.quantityReceived ?? "—"}
+                                            </span>
+                                            <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${WATCHLIST_STATUS_STYLE[item.status]}`}>
+                                                {WATCHLIST_STATUS_LABEL[item.status]}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <Link
-                                        href="/pharma/purchase"
-                                        title="Create purchase order for this item"
-                                        className="rounded-lg bg-slate-50 hover:bg-[#044d73]/10 text-slate-600 hover:text-[#044d73] p-1.5 transition-colors border border-slate-200"
+                                </div>
+                            ))}
+                            {!loading && watchlist.length === 0 && (
+                                <p className="py-6 text-center text-xs text-slate-400">Nothing needs attention right now.</p>
+                            )}
+                        </div>
+                    </div>
+
+                    {watchlist.length > WATCHLIST_PAGE_SIZE && (
+                        <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
+                            <span className="text-slate-400 text-[11px]">
+                                Showing {(safeWatchlistPage - 1) * WATCHLIST_PAGE_SIZE + 1}–{Math.min(safeWatchlistPage * WATCHLIST_PAGE_SIZE, watchlist.length)} of {watchlist.length}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-medium text-slate-400">
+                                    Page {safeWatchlistPage} of {totalWatchlistPages}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setWatchlistPage((p) => Math.max(1, p - 1))}
+                                        disabled={safeWatchlistPage <= 1}
+                                        className="rounded-md border border-slate-200 p-1 text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                                        title="Previous Page"
                                     >
-                                        <Plus className="h-3.5 w-3.5" />
-                                    </Link>
+                                        <ChevronLeft className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setWatchlistPage((p) => Math.min(totalWatchlistPages, p + 1))}
+                                        disabled={safeWatchlistPage >= totalWatchlistPages}
+                                        className="rounded-md border border-slate-200 p-1 text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                                        title="Next Page"
+                                    >
+                                        <ChevronRight className="h-4 w-4" />
+                                    </button>
                                 </div>
                             </div>
-                        ))}
-                        {!loading && watchlist.length === 0 && (
-                            <p className="py-6 text-center text-xs text-slate-400">Nothing needs attention right now.</p>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-4 min-w-0">

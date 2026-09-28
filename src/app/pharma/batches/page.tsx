@@ -70,7 +70,7 @@ export interface Pagination {
 
 type StatusFilterOption = "all" | "expired" | "near" | "ok";
 
-const PAGE_LIMIT = 20;
+const PAGE_LIMIT = 10;
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */

@@ -106,7 +106,7 @@ async function buildPurchaseExpenseText(
 //     .insert(purchases)
 //     .values({
 //       organizationId,
-//       supplierId: input.supplierId,
+//       partyId: input.partyId,
 //       supplierInvoiceNumber: input.supplierInvoiceNumber,
 //       purchaseDate: input.purchaseDate,
 //       purcType: input.purcType,
@@ -152,7 +152,7 @@ async function buildPurchaseExpenseText(
 //         input.items.map((item) => ({
 //           organizationId,
 //           productId: item.productId,
-//           supplierId: item.batch.supplierId ?? input.supplierId,
+//           partyId: item.batch.partyId ?? input.partyId,
 //           batchNumber: item.batch.batchNumber,
 //           manufacturingDate: item.batch.manufacturingDate,
 //           expiryDate: item.batch.expiryDate,
@@ -244,7 +244,7 @@ export async function createPurchase(
     .insert(purchases)
     .values({
       organizationId,
-      supplierId: input.supplierId,
+      partyId: input.partyId,
       supplierInvoiceNumber: input.supplierInvoiceNumber,
       purchaseDate: input.purchaseDate,
       purcType: input.purcType,
@@ -298,7 +298,7 @@ export async function createPurchase(
         input.items.map((item) => ({
           organizationId,
           productId: item.productId,
-          supplierId: item.batch.supplierId ?? input.supplierId,
+          partyId: item.batch.partyId ?? input.partyId,
           batchNumber: item.batch.batchNumber,
           manufacturingDate: item.batch.manufacturingDate,
           expiryDate: item.batch.expiryDate,
@@ -531,7 +531,7 @@ export async function updatePurchase(
     await db
       .update(purchases)
       .set({
-        supplierId: input.supplierId,
+        partyId: input.partyId,
         supplierInvoiceNumber: input.supplierInvoiceNumber,
         purchaseDate: input.purchaseDate,
         purcType: input.purcType,
@@ -642,7 +642,7 @@ export async function updatePurchase(
           newItems.map((item) => ({
             organizationId,
             productId: item.productId,
-            supplierId: item.batch.supplierId ?? input.supplierId,
+            partyId: item.batch.partyId ?? input.partyId,
             batchNumber: item.batch.batchNumber,
             manufacturingDate: item.batch.manufacturingDate,
             expiryDate: item.batch.expiryDate,

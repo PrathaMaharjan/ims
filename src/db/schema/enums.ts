@@ -25,6 +25,12 @@ export const saleReturnStatusEnum = pgEnum("sale_return_status", [
   "COMPLETED",
 ]);
 
+export const partyTypeEnum = pgEnum("party_type", [
+  "SUPPLIER",
+  "CUSTOMER",
+  "BOTH",
+]);
+
 export const paymentDirectionEnum = pgEnum("payment_direction", [
   "PAID_TO_SUPPLIER",
   "RECEIVED_FROM_CUSTOMER",

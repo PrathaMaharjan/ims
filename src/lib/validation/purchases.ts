@@ -9,7 +9,7 @@ const purchaseItemInputSchema = z.object({
 });
 
 export const createPurchaseSchema = z.object({
-  supplierId: z.string().uuid(),
+  partyId: z.string().uuid(),
   supplierInvoiceNumber: z.string().max(100).optional(),
   purchaseDate: z.string(),
   purcType: z.enum(["VAT_EXEMPT", "VAT_ITEM_WISE", "VAT_TAX_INCL"]),
@@ -40,7 +40,7 @@ const updatePurchaseItemInputSchema = purchaseItemInputSchema.extend({
 });
 
 export const updatePurchaseSchema = z.object({
-  supplierId: z.string().uuid(),
+  partyId: z.string().uuid(),
   supplierInvoiceNumber: z.string().max(100).optional(),
   purchaseDate: z.string(),
   purcType: z.enum(["VAT_EXEMPT", "VAT_ITEM_WISE", "VAT_TAX_INCL"]),

@@ -2,7 +2,7 @@ import { pgTable, uuid, varchar, date, numeric, integer, timestamp, index,text }
 import { relations } from "drizzle-orm";
 import { organizations } from "./organizations";
 import { products } from "./products";
-import { suppliers } from "./suppliers";
+import { parties } from "./parties";
 
 import { batchStatusEnum } from "./enums";
 import { saleItems } from "./sales";
@@ -17,7 +17,7 @@ export const batches = pgTable("batches", {
   productId: uuid("product_id")
     .notNull()
     .references(() => products.id, { onDelete: "restrict" }),
-  supplierId: uuid("supplier_id").references(() => suppliers.id, {
+  partyId: uuid("party_id").references(() => parties.id, {
     onDelete: "set null",
   }),
   note: text("note"),
@@ -48,9 +48,9 @@ export const batchesRelations = relations(batches, ({ one, many }) => ({
     fields: [batches.productId],
     references: [products.id],
   }),
-  supplier: one(suppliers, {
-    fields: [batches.supplierId],
-    references: [suppliers.id],
+  party: one(parties, {
+    fields: [batches.partyId],
+    references: [parties.id],
   }),
   saleItems: many(saleItems),
 }));

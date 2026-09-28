@@ -43,7 +43,7 @@ export interface ApiBatch {
   quantityAvailable: number;
   status: "ACTIVE" | "NEAR_EXPIRY" | "EXPIRED";
   daysLeft: number; // negative once expired
-  supplier?: { id: string; name: string } | null;
+  party?: { id: string; name: string } | null;
   note?: string | null;
   notes?: string | null;
   remarks?: string | null;
@@ -1330,7 +1330,7 @@ export default function InventoryPage() {
                                         : "—"}
                                     </td>
                                     <td className="py-3 px-3 text-slate-500">
-                                      {b.supplier?.name || "—"}
+                                      {b.party?.name || "—"}
                                     </td>
                                     <td className="py-3 px-3">
                                       <span

@@ -26,14 +26,19 @@ import { DotsLoader } from "../_components/ui/dots-loader";
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-interface Supplier {
+type PartyType = "SUPPLIER" | "CUSTOMER" | "BOTH";
+type TypeTab = "ALL" | "SUPPLIER" | "CUSTOMER";
+
+interface Party {
   id: string;
   name: string;
+  partyType: PartyType;
   contactPerson: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
   panVatNumber: string | null;
+  paymentTerms: string | null;
   status: boolean;
 }
 
@@ -44,67 +49,104 @@ interface Pagination {
   totalPages: number;
 }
 
+interface PartyStats {
+  totalCount: number;
+  activeCount: number;
+  inactiveCount: number;
+}
+
 const PAGE_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 400;
 
 const EMPTY_FORM = {
   name: "",
+  partyType: "BOTH" as PartyType,
   contactPerson: "",
   phone: "",
   email: "",
   address: "",
   panVatNumber: "",
+  paymentTerms: "",
 };
 
-interface SupplierStats {
-  totalCount: number;
-  activeCount: number;
-  inactiveCount: number;
+const TYPE_TABS: { value: TypeTab; label: string }[] = [
+  { value: "ALL", label: "All Parties" },
+  { value: "SUPPLIER", label: "Suppliers" },
+  { value: "CUSTOMER", label: "Customers" },
+];
+
+const TYPE_LABEL: Record<PartyType, string> = {
+  SUPPLIER: "Supplier",
+  CUSTOMER: "Customer",
+  BOTH: "Supplier & Customer",
+};
+
+const TYPE_BADGE: Record<PartyType, string> = {
+  SUPPLIER: "bg-sky-50 text-sky-700 border-sky-200/60",
+  CUSTOMER: "bg-violet-50 text-violet-700 border-violet-200/60",
+  BOTH: "bg-teal-50 text-teal-700 border-teal-200/60",
+};
+
+const inputCls =
+  "w-full rounded-lg border border-slate-200/80 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400/80 bg-slate-50/30 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all";
+const iconInputCls =
+  "w-full rounded-lg border border-slate-200/80 py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-400/80 bg-slate-50/30 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all";
+const labelCls = "mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2";
+
+function TypeBadge({ type }: { type: PartyType }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${TYPE_BADGE[type]}`}
+    >
+      {TYPE_LABEL[type]}
+    </span>
+  );
 }
 
 /* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
-export default function SuppliersPage() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+export default function PartiesPage() {
+  const [parties, setParties] = useState<Party[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [typeTab, setTypeTab] = useState<TypeTab>("ALL");
   const [searchInput, setSearchInput] = useState(""); // what the user is typing
   const [search, setSearch] = useState(""); // the debounced value actually sent to the backend
 
-  const [statusFilter, setStatusFilter] = useState<
-    "All" | "Active" | "Inactive"
-  >("All");
+  const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Inactive">("All");
   const [currentPage, setCurrentPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Party | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const [stats, setStats] = useState<SupplierStats>({
+  const [stats, setStats] = useState<PartyStats>({
     totalCount: 0,
     activeCount: 0,
     inactiveCount: 0,
   });
 
+  const typeParam = typeTab === "ALL" ? undefined : typeTab;
+
   const loadStats = useCallback(async () => {
     try {
-      const res = await api.get("/api/supplier/stats");
+      const res = await api.get("/api/parties/stats", { params: { type: typeParam } });
       setStats(res.data.stats);
     } catch (error) {
       if (error instanceof Error) {
         console.log("error in loading the stats", error.message);
       }
     }
-  }, []);
+  }, [typeParam]);
 
   useEffect(() => {
     loadStats();
@@ -120,92 +162,76 @@ export default function SuppliersPage() {
     return () => clearTimeout(timeout);
   }, [searchInput]);
 
-  function applyStatsDelta(prev: Supplier | null, next: Supplier | null) {
-    setStats((s) => {
-      let { totalCount, activeCount, inactiveCount } = s;
-
-      if (prev) {
-        totalCount -= 1;
-        if (prev.status) activeCount -= 1;
-        else inactiveCount -= 1;
-      }
-      if (next) {
-        totalCount += 1;
-        if (next.status) activeCount += 1;
-        else inactiveCount += 1;
-      }
-
-      return { totalCount, activeCount, inactiveCount };
-    });
-  }
-
-  // Real server-side pagination + search — refetches whenever page or search changes.
-  async function loadSuppliers() {
+  // Real server-side pagination + search — refetches whenever page, search or tab changes.
+  const loadParties = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await api.get("/api/supplier", {
+      const res = await api.get("/api/parties", {
         params: {
           page: currentPage,
           limit: PAGE_LIMIT,
           search: search || undefined,
+          type: typeParam,
         },
       });
-      setSuppliers(res.data.suppliers);
+      setParties(res.data.parties);
       setPagination(res.data.pagination);
     } catch {
-      setLoadError("Failed to load suppliers.");
+      setLoadError("Failed to load parties.");
     } finally {
       setLoading(false);
     }
-  }
+  }, [currentPage, search, typeParam]);
 
   useEffect(() => {
-    loadSuppliers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, search]);
+    loadParties();
+  }, [loadParties]);
 
-  // Active/Inactive counts now only reflect the current page, not the whole
-  // dataset — an accurate global count would need a separate backend query.
-  const activeCount = suppliers.filter((s) => s.status).length;
-  const inactiveCount = suppliers.filter((s) => !s.status).length;
-
-  const filtered = suppliers.filter((s) => {
+  const filtered = parties.filter((p) => {
     const matchesStatus =
-      statusFilter === "All" ||
-      (statusFilter === "Active" ? s.status : !s.status);
+      statusFilter === "All" || (statusFilter === "Active" ? p.status : !p.status);
     return matchesStatus;
   });
 
   const totalPages = pagination?.totalPages ?? 1;
 
+  function handleTabChange(tab: TypeTab) {
+    setTypeTab(tab);
+    setCurrentPage(1);
+  }
+
   function resetForm() {
     setForm(EMPTY_FORM);
-    setEditingSupplier(null);
+    setEditingParty(null);
     setErrorMsg(null);
   }
 
   function handleOpenAdd() {
     resetForm();
+    // Pre-select the type that matches the tab the user is looking at.
+    setForm({ ...EMPTY_FORM, partyType: typeTab === "ALL" ? "BOTH" : typeTab });
     setIsModalOpen(true);
   }
 
-  function handleOpenEdit(supplier: Supplier) {
-    setEditingSupplier(supplier);
+  function handleOpenEdit(party: Party) {
+    setEditingParty(party);
     setForm({
-      name: supplier.name,
-      contactPerson: supplier.contactPerson ?? "",
-      phone: supplier.phone ?? "",
-      email: supplier.email ?? "",
-      address: supplier.address ?? "",
-      panVatNumber: supplier.panVatNumber ?? "",
+      name: party.name,
+      partyType: party.partyType,
+      contactPerson: party.contactPerson ?? "",
+      phone: party.phone ?? "",
+      email: party.email ?? "",
+      address: party.address ?? "",
+      panVatNumber: party.panVatNumber ?? "",
+      paymentTerms: party.paymentTerms ?? "",
     });
     setIsModalOpen(true);
   }
 
-  async function handleSaveSupplier() {
+  async function handleSaveParty() {
     if (!form.name.trim()) {
-      setErrorMsg("Supplier name is required.");
+      setErrorMsg("Party name is required.");
       return;
     }
 
@@ -214,66 +240,47 @@ export default function SuppliersPage() {
 
     const payload = {
       name: form.name.trim(),
+      partyType: form.partyType,
       contactPerson: form.contactPerson.trim() || undefined,
       phone: form.phone.trim() || undefined,
       email: form.email.trim() || undefined,
       address: form.address.trim() || undefined,
       panVatNumber: form.panVatNumber.trim() || undefined,
+      paymentTerms: form.paymentTerms.trim() || undefined,
     };
     try {
-      if (editingSupplier) {
-        const res = await api.patch(
-          `/api/supplier/${editingSupplier.id}`,
-          payload,
-        );
-        const updated: Supplier = res.data.supplier;
-        applyStatsDelta(editingSupplier, updated);
-        setSuppliers((prev) =>
-          prev.map((s) => (s.id === updated.id ? updated : s)),
-        );
+      if (editingParty) {
+        await api.patch(`/api/parties/${editingParty.id}`, payload);
       } else {
-        const res = await api.post("/api/supplier", payload);
-        const created: Supplier = res.data.supplier;
-        applyStatsDelta(null, created);
-        if (currentPage === 1 && !search) {
-          setSuppliers((prev) => [created, ...prev].slice(0, PAGE_LIMIT));
-        }
-        setPagination((p: any) => ({
-          ...p,
-          total: p.total + 1,
-          totalPages: Math.ceil((p.total + 1) / PAGE_LIMIT),
-        }));
+        await api.post("/api/parties", payload);
       }
       resetForm();
       setIsModalOpen(false);
+      // Refetch rather than patch local state: a type change can move the
+      // party in or out of the current tab.
+      await Promise.all([loadParties(), loadStats()]);
     } catch {
-      setErrorMsg("Failed to save supplier. Please try again.");
+      setErrorMsg("Failed to save party. Please try again.");
     } finally {
       setSaving(false);
     }
   }
-  async function confirmDeleteSupplier() {
+
+  async function confirmDeleteParty() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await api.delete(`/api/supplier/${deleteTarget.id}`);
-      applyStatsDelta(deleteTarget, null);
-      setSuppliers((prev) => prev.filter((s) => s.id !== deleteTarget.id));
-      setPagination((p: any) => {
-        const newTotal = Math.max(0, p.total - 1);
-        return {
-          ...p,
-          total: newTotal,
-          totalPages: Math.max(1, Math.ceil(newTotal / PAGE_LIMIT)),
-        };
-      });
-      if (suppliers.length === 1 && currentPage > 1) {
+      await api.delete(`/api/parties/${deleteTarget.id}`);
+      if (parties.length === 1 && currentPage > 1) {
         setCurrentPage((p) => p - 1);
+      } else {
+        await loadParties();
       }
+      await loadStats();
       setDeleteTarget(null);
     } catch {
       setLoadError(
-        "Failed to delete supplier — it may be referenced by existing purchases.",
+        "Failed to delete party — it may be referenced by existing purchases or sales.",
       );
       setDeleteTarget(null);
     } finally {
@@ -281,30 +288,25 @@ export default function SuppliersPage() {
     }
   }
 
-  async function toggleStatus(supplier: Supplier) {
-    const newStatus = !supplier.status;
-    const updated = { ...supplier, status: newStatus };
-    setSuppliers((prev) =>
-      prev.map((s) => (s.id === supplier.id ? updated : s)),
-    );
-    applyStatsDelta(supplier, updated);
+  async function toggleStatus(party: Party) {
+    const updated = { ...party, status: !party.status };
+    setParties((prev) => prev.map((p) => (p.id === party.id ? updated : p)));
     try {
-      await api.patch(`/api/supplier/${supplier.id}`, { status: newStatus });
+      await api.patch(`/api/parties/${party.id}`, { status: updated.status });
+      await loadStats();
     } catch {
-      setSuppliers((prev) =>
-        prev.map((s) => (s.id === supplier.id ? supplier : s)),
-      );
-      applyStatsDelta(updated, supplier);
+      setParties((prev) => prev.map((p) => (p.id === party.id ? party : p)));
     }
   }
+
+  const tabNoun =
+    typeTab === "SUPPLIER" ? "suppliers" : typeTab === "CUSTOMER" ? "customers" : "parties";
 
   return (
     <div className="flex flex-col gap-8">
       {/* Banner Title */}
       <div className="rounded-xl bg-[#044d73] px-4 py-4 text-white shadow-sm sm:px-6 sm:py-5">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-          Suppliers
-        </h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Parties</h1>
       </div>
 
       {loadError && (
@@ -313,12 +315,30 @@ export default function SuppliersPage() {
         </div>
       )}
 
-      {/* Top Status Dashboards — reflect the current page only, not the full dataset */}
+      {/* Type Tabs */}
+      <div className="flex items-center gap-1 self-start rounded-xl bg-slate-100 p-1 border border-slate-200 overflow-x-auto max-w-full">
+        {TYPE_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => handleTabChange(tab.value)}
+            className={`rounded-lg px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${
+              typeTab === tab.value
+                ? "bg-white text-[#044d73] shadow-sm"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Top Status Dashboards — scoped to the selected tab */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-200 border-l-4 border-l-slate-400 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
           <div>
             <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Total Suppliers
+              Total {tabNoun}
             </p>
             <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
               <AnimatedStatValue value={stats.totalCount} />
@@ -331,9 +351,7 @@ export default function SuppliersPage() {
 
         <div className="rounded-xl border border-slate-200 border-l-4 border-l-emerald-500 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
           <div>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Active
-            </p>
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Active</p>
             <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
               <AnimatedStatValue value={stats.activeCount} />
             </p>
@@ -345,9 +363,7 @@ export default function SuppliersPage() {
 
         <div className="rounded-xl border border-slate-200 border-l-4 border-l-amber-500 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
           <div>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-              Inactive
-            </p>
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Inactive</p>
             <p className="text-2xl font-bold text-slate-800 mt-1 sm:text-3xl">
               <AnimatedStatValue value={stats.inactiveCount} />
             </p>
@@ -366,16 +382,14 @@ export default function SuppliersPage() {
             <input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search suppliers..."
+              placeholder={`Search ${tabNoun}...`}
               className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
             />
           </div>
 
           <select
             value={statusFilter}
-            onChange={(e) =>
-              setStatusFilter(e.target.value as typeof statusFilter)
-            }
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
           >
             <option value="All">All Status</option>
@@ -389,14 +403,16 @@ export default function SuppliersPage() {
           className="flex items-center justify-center gap-2 rounded-lg bg-[#044d73] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#033f60] w-full md:w-auto"
         >
           <UserPlus className="h-4 w-4" />
-          Add Supplier
+          Add Party
         </button>
       </div>
 
       {/* Data Section Container */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         {loading ? (
-          <div className="py-16"><DotsLoader text="Loading suppliers..." size="sm" /></div>
+          <div className="py-16">
+            <DotsLoader text={`Loading ${tabNoun}...`} size="sm" />
+          </div>
         ) : (
           <>
             {/* Desktop Table */}
@@ -404,7 +420,8 @@ export default function SuppliersPage() {
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    <th className="py-3 px-4">Supplier</th>
+                    <th className="py-3 px-4">Party</th>
+                    <th className="py-3 px-4">Type</th>
                     <th className="py-3 px-4">Contact Person</th>
                     <th className="py-3 px-4">Contact</th>
                     <th className="py-3 px-4">PAN No.</th>
@@ -415,82 +432,73 @@ export default function SuppliersPage() {
                 <tbody className="divide-y divide-slate-100">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={6}
-                        className="py-12 text-center text-sm text-slate-400"
-                      >
-                        No suppliers match your search.
+                      <td colSpan={7} className="py-12 text-center text-sm text-slate-400">
+                        No {tabNoun} match your search.
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((supplier) => (
-                      <tr
-                        key={supplier.id}
-                        className="hover:bg-slate-50/50 transition-colors group"
-                      >
+                    filtered.map((party) => (
+                      <tr key={party.id} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-3">
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#044d73]/10 text-sm font-semibold text-[#044d73] border border-[#044d73]/20">
                               <Building2 className="h-4 w-4" />
                             </div>
                             <div>
-                              <span className="font-medium text-slate-900">
-                                {supplier.name}
-                              </span>
-                              {supplier.address && (
-                                <p className="text-xs text-slate-400 mt-0.5">
-                                  {supplier.address}
-                                </p>
+                              <span className="font-medium text-slate-900">{party.name}</span>
+                              {party.address && (
+                                <p className="text-xs text-slate-400 mt-0.5">{party.address}</p>
                               )}
                             </div>
                           </div>
                         </td>
+                        <td className="py-4 px-4">
+                          <TypeBadge type={party.partyType} />
+                        </td>
                         <td className="py-4 px-4 text-slate-600 font-medium">
-                          {supplier.contactPerson || "—"}
+                          {party.contactPerson || "—"}
                         </td>
                         <td className="py-4 px-4 text-slate-500">
                           <div className="flex flex-col">
-                            <span className="font-medium text-slate-700">
-                              {supplier.email || "—"}
-                            </span>
+                            <span className="font-medium text-slate-700">{party.email || "—"}</span>
                             <span className="text-xs text-slate-400 mt-0.5 font-mono">
-                              {supplier.phone || "—"}
+                              {party.phone || "—"}
                             </span>
                           </div>
                         </td>
                         <td className="py-4 px-4 text-slate-500 font-mono text-xs">
-                          {supplier.panVatNumber || "—"}
+                          {party.panVatNumber || "—"}
                         </td>
                         <td className="py-4 px-4">
                           <button
                             type="button"
-                            onClick={() => toggleStatus(supplier)}
+                            onClick={() => toggleStatus(party)}
                             title="Click to toggle status"
                             className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium cursor-pointer transition-all hover:scale-105 active:scale-95 select-none ${
-                              supplier.status
+                              party.status
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200/50"
                                 : "bg-slate-100 text-slate-500 border border-slate-200"
                             }`}
                           >
                             <span
-                              className={`mr-1.5 h-1.5 w-1.5 rounded-full ${supplier.status ? "bg-emerald-600" : "bg-slate-400"}`}
+                              className={`mr-1.5 h-1.5 w-1.5 rounded-full ${party.status ? "bg-emerald-600" : "bg-slate-400"}`}
                             />
-                            {supplier.status ? "Active" : "Inactive"}
+                            {party.status ? "Active" : "Inactive"}
                           </button>
                         </td>
                         <td className="py-4 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
                             <button
-                              onClick={() => handleOpenEdit(supplier)}
+                              onClick={() => handleOpenEdit(party)}
                               className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-[#044d73] transition-colors"
-                              title="Edit Supplier"
+                              title="Edit Party"
                             >
                               <Pencil className="h-4 w-4" />
                             </button>
                             <button
-                              onClick={() => setDeleteTarget(supplier)}
+                              onClick={() => setDeleteTarget(party)}
                               className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              title="Remove Supplier"
+                              title="Remove Party"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -507,78 +515,73 @@ export default function SuppliersPage() {
             <div className="block md:hidden divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <div className="py-12 text-center text-sm text-slate-400 px-4">
-                  No suppliers match your search.
+                  No {tabNoun} match your search.
                 </div>
               ) : (
-                filtered.map((supplier) => (
-                  <div
-                    key={supplier.id}
-                    className="p-4 flex flex-col gap-4 bg-white"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
+                filtered.map((party) => (
+                  <div key={party.id} className="p-4 flex flex-col gap-4 bg-white">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#044d73]/10 text-sm font-semibold text-[#044d73] border border-[#044d73]/20">
                           <Building2 className="h-4 w-4" />
                         </div>
-                        <div>
-                          <h4 className="font-medium text-slate-900 text-sm">
-                            {supplier.name}
-                          </h4>
-                          <span className="inline-block text-xs text-slate-500 font-medium mt-0.5">
-                            {supplier.contactPerson || "—"}
-                          </span>
+                        <div className="min-w-0">
+                          <h4 className="font-medium text-slate-900 text-sm truncate">{party.name}</h4>
+                          <div className="mt-1">
+                            <TypeBadge type={party.partyType} />
+                          </div>
                         </div>
                       </div>
 
                       <button
                         type="button"
-                        onClick={() => toggleStatus(supplier)}
-                        className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium cursor-pointer transition-all select-none ${
-                          supplier.status
+                        onClick={() => toggleStatus(party)}
+                        className={`shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium cursor-pointer transition-all select-none ${
+                          party.status
                             ? "bg-emerald-50 text-emerald-700 border border-emerald-200/50"
                             : "bg-slate-100 text-slate-500 border border-slate-200"
                         }`}
                       >
                         <span
-                          className={`mr-1.5 h-1.5 w-1.5 rounded-full ${supplier.status ? "bg-emerald-600" : "bg-slate-400"}`}
+                          className={`mr-1.5 h-1.5 w-1.5 rounded-full ${party.status ? "bg-emerald-600" : "bg-slate-400"}`}
                         />
-                        {supplier.status ? "Active" : "Inactive"}
+                        {party.status ? "Active" : "Inactive"}
                       </button>
                     </div>
 
                     <div className="text-xs text-slate-500 bg-slate-50/50 rounded-lg p-3 space-y-1">
+                      {party.contactPerson && (
+                        <div className="flex items-center gap-2">
+                          <Users className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span className="text-slate-700 font-medium">{party.contactPerson}</span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2">
                         <Mail className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate text-slate-700 font-medium">
-                          {supplier.email || "—"}
-                        </span>
+                        <span className="truncate text-slate-700 font-medium">{party.email || "—"}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Phone className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span className="font-mono text-slate-600">
-                          {supplier.phone || "—"}
-                        </span>
+                        <span className="font-mono text-slate-600">{party.phone || "—"}</span>
                       </div>
-                      {supplier.address && (
+                      {party.address && (
                         <div className="flex items-center gap-2">
                           <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          <span className="text-slate-600">
-                            {supplier.address}
-                          </span>
+                          <span className="text-slate-600">{party.address}</span>
                         </div>
                       )}
                     </div>
 
                     <div className="flex items-center justify-end gap-2 border-t border-slate-100/80 pt-3">
                       <button
-                        onClick={() => handleOpenEdit(supplier)}
+                        onClick={() => handleOpenEdit(party)}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-200 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                         Edit
                       </button>
                       <button
-                        onClick={() => setDeleteTarget(supplier)}
+                        onClick={() => setDeleteTarget(party)}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-red-100 py-2 text-xs font-medium text-red-600 bg-red-50/30 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -593,8 +596,7 @@ export default function SuppliersPage() {
             {/* Footer Pagination Controls */}
             <div className="flex flex-col gap-4 items-center justify-between border-t border-slate-100 bg-white px-6 py-4 sm:flex-row">
               <div className="text-sm text-slate-500 hidden sm:block">
-                {pagination &&
-                  `Showing ${suppliers.length} of ${pagination.total} suppliers`}
+                {pagination && `Showing ${parties.length} of ${pagination.total} ${tabNoun}`}
               </div>
 
               <div className="flex items-center justify-between w-full sm:w-auto gap-6">
@@ -611,10 +613,8 @@ export default function SuppliersPage() {
                     <ChevronLeft className="h-5 w-5" />
                   </button>
                   <button
-                    onClick={() =>
-                      setCurrentPage((p) => Math.min(p + 1, totalPages))
-                    }
-                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                    disabled={currentPage >= totalPages}
                     className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:pointer-events-none transition-colors touch-manipulation"
                     title="Next Page"
                   >
@@ -629,14 +629,20 @@ export default function SuppliersPage() {
 
       {/* Add/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto" onClick={() => setIsModalOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden my-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden my-auto"
+          >
             <div className="relative flex items-center justify-center bg-[#044d73] p-4 text-white sm:p-6">
               <div className="hidden h-10 w-10 items-center justify-center text-white sm:flex">
                 <UserPlus className="h-6 w-6" />
               </div>
               <h2 className="text-lg font-semibold text-white text-center sm:text-2xl">
-                {editingSupplier ? "Edit Supplier" : "Add New Supplier"}
+                {editingParty ? "Edit Party" : "Add New Party"}
               </h2>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -654,97 +660,105 @@ export default function SuppliersPage() {
 
             <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:gap-5 sm:p-6">
               <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2">
-                  Supplier Name
-                </label>
+                <label className={labelCls}>Party Name</label>
                 <div className="relative">
                   <Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="e.g. Arrow Pharmaceuticals Ltd"
-                    className="w-full rounded-lg border border-slate-200/80 py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-400/80 bg-slate-50/30 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
+                    className={iconInputCls}
                   />
                 </div>
               </div>
 
+              <div className="sm:col-span-2">
+                <label className={labelCls}>Party Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["SUPPLIER", "CUSTOMER", "BOTH"] as PartyType[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setForm({ ...form, partyType: t })}
+                      className={`rounded-lg border px-2 py-2 text-xs sm:text-sm font-medium transition-all ${
+                        form.partyType === t
+                          ? "border-[#044d73] bg-[#044d73]/5 text-[#044d73] ring-2 ring-[#044d73]/10"
+                          : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      {t === "BOTH" ? "Both" : TYPE_LABEL[t]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2">
-                  Contact Person
-                </label>
+                <label className={labelCls}>Contact Person</label>
                 <input
                   value={form.contactPerson}
-                  onChange={(e) =>
-                    setForm({ ...form, contactPerson: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
                   placeholder="Enter contact name"
-                  className="w-full rounded-lg border border-slate-200/80 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400/80 bg-slate-50/30 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
+                  className={inputCls}
                 />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2">
-                  Phone Number
-                </label>
+                <label className={labelCls}>Phone Number</label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     value={form.phone}
-                    onChange={(e) =>
-                      setForm({ ...form, phone: e.target.value })
-                    }
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
                     placeholder="9XXXXXXXXX"
-                    className="w-full rounded-lg border border-slate-200/80 py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-400/80 bg-slate-50/30 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
+                    className={iconInputCls}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2">
-                  Email Address
-                </label>
+                <label className={labelCls}>Email Address</label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     value={form.email}
-                    onChange={(e) =>
-                      setForm({ ...form, email: e.target.value })
-                    }
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
                     placeholder="Enter email"
-                    className="w-full rounded-lg border border-slate-200/80 py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-400/80 bg-slate-50/30 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
+                    className={iconInputCls}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2">
-                  PAN No.
-                </label>
+                <label className={labelCls}>PAN No.</label>
                 <input
                   value={form.panVatNumber}
-                  onChange={(e) =>
-                    setForm({ ...form, panVatNumber: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, panVatNumber: e.target.value })}
                   placeholder="e.g. 301234567"
-                  className="w-full rounded-lg border border-slate-200/80 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400/80 bg-slate-50/30 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
+                  className={inputCls}
                 />
               </div>
 
-              <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2">
-                  Address
-                </label>
+              <div>
+                <label className={labelCls}>Address</label>
                 <div className="relative">
                   <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     value={form.address}
-                    onChange={(e) =>
-                      setForm({ ...form, address: e.target.value })
-                    }
+                    onChange={(e) => setForm({ ...form, address: e.target.value })}
                     placeholder="e.g. Balaju, Kathmandu"
-                    className="w-full rounded-lg border border-slate-200/80 py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-400/80 bg-slate-50/30 focus:bg-white focus:border-[#044d73] focus:outline-none focus:ring-4 focus:ring-[#044d73]/10 transition-all"
+                    className={iconInputCls}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className={labelCls}>Payment Terms</label>
+                <input
+                  value={form.paymentTerms}
+                  onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
+                  placeholder="e.g. Net 30"
+                  className={inputCls}
+                />
               </div>
             </div>
 
@@ -758,15 +772,11 @@ export default function SuppliersPage() {
               </button>
               <button
                 type="button"
-                onClick={handleSaveSupplier}
+                onClick={handleSaveParty}
                 disabled={saving}
                 className="flex items-center justify-center gap-2 rounded-lg bg-[#044d73] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#033f60] disabled:opacity-50 w-full sm:w-auto"
               >
-                {saving
-                  ? "Saving..."
-                  : editingSupplier
-                    ? "Save Changes"
-                    : "Add Supplier"}
+                {saving ? "Saving..." : editingParty ? "Save Changes" : "Add Party"}
               </button>
             </div>
           </div>
@@ -788,15 +798,10 @@ export default function SuppliersPage() {
                 <AlertTriangle className="h-6 w-6 sm:h-7 sm:w-7" />
               </div>
               <div>
-                <h2 className="text-base font-semibold text-slate-900 sm:text-lg">
-                  Remove Supplier
-                </h2>
+                <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Remove Party</h2>
                 <p className="mt-2 text-sm text-slate-500 px-2">
                   Are you sure you want to remove{" "}
-                  <span className="font-semibold text-slate-700">
-                    {deleteTarget.name}
-                  </span>{" "}
-                  from suppliers?
+                  <span className="font-semibold text-slate-700">{deleteTarget.name}</span>?
                 </p>
               </div>
             </div>
@@ -811,7 +816,7 @@ export default function SuppliersPage() {
               </button>
               <button
                 type="button"
-                onClick={confirmDeleteSupplier}
+                onClick={confirmDeleteParty}
                 disabled={deleting}
                 className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700 disabled:opacity-50"
               >

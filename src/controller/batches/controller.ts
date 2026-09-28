@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { batches, products, suppliers } from "@/db/schema";
+import { batches, parties, products } from "@/db/schema";
 import { and, asc, eq, gt, SQL, sql } from "drizzle-orm";
 
 const batchColumns = {
@@ -14,7 +14,7 @@ const batchColumns = {
   quantityAvailable: true,
   status: true,
   note: true,
-  supplierId: true,
+  partyId: true,
   createdAt: true,
 } as const;
 
@@ -56,7 +56,7 @@ export async function listBatchesForProduct(
     ),
     columns: batchColumns,
     with: {
-      supplier: { columns: { id: true, name: true } },
+      party: { columns: { id: true, name: true } },
     },
     orderBy: (table, { asc }) => [asc(table.expiryDate)], // FEFO order — soonest expiry first
   });
@@ -124,7 +124,7 @@ export interface ExpiryBatchRow {
   productId: string;
   productName: string;
   unit: string;
-  supplierName: string | null;
+  partyName: string | null;
   expiryDate: string; // "2026-10-12"
   daysLeft: number; // negative once expired
   quantityAvailable: number;
@@ -168,7 +168,7 @@ export async function getExpiringBatches(
         productId: batches.productId,
         productName: products.name,
         unit: products.unit,
-        supplierName: suppliers.name,
+        partyName: parties.name,
         expiryDate: batches.expiryDate,
         daysLeft: sql<number>`(${batches.expiryDate} - CURRENT_DATE)::int`,
         quantityAvailable: batches.quantityAvailable,
@@ -179,7 +179,7 @@ export async function getExpiringBatches(
       })
       .from(batches)
       .innerJoin(products, eq(batches.productId, products.id))
-      .leftJoin(suppliers, eq(batches.supplierId, suppliers.id))
+      .leftJoin(parties, eq(batches.partyId, parties.id))
       .where(where)
       .orderBy(asc(batches.expiryDate), asc(batches.batchNumber))
       .limit(limit)

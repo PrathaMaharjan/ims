@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, date, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
-import { suppliers } from "./suppliers";
+import { parties } from "./parties";
 import { batches } from "./batches";
 import { sales, saleItems } from "./sales";
 import { purchaseReturnStatusEnum, saleReturnStatusEnum } from "./enums";
@@ -10,9 +10,9 @@ export const purchaseReturns = pgTable("purchase_returns", {
   organizationId: uuid("organization_id")
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
-  supplierId: uuid("supplier_id")
+  partyId: uuid("party_id")
     .notNull()
-    .references(() => suppliers.id, { onDelete: "restrict" }),
+    .references(() => parties.id, { onDelete: "restrict" }),
   batchId: uuid("batch_id")
     .notNull()
     .references(() => batches.id, { onDelete: "restrict" }),

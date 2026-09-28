@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { organizations } from "./organizations";
-import { customers } from "./customers";
+import { parties } from "./parties";
 import { products } from "./products";
 import { batches } from "./batches";
 import { users } from "./users";
@@ -23,7 +23,7 @@ export const sales = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     invoiceNumber: integer("invoice_number").notNull(), // sequential per org, no gaps
-    customerId: uuid("customer_id").references(() => customers.id, {
+    partyId: uuid("party_id").references(() => parties.id, {
       onDelete: "set null",
     }),
     paymentType: purchasePaymentTypeEnum("payment_type").notNull().default("CASH"),
@@ -87,9 +87,9 @@ export const saleItems = pgTable("sale_items", {
 });
 
 export const salesRelations = relations(sales, ({ one, many }) => ({
-  customer: one(customers, {
-    fields: [sales.customerId],
-    references: [customers.id],
+  party: one(parties, {
+    fields: [sales.partyId],
+    references: [parties.id],
   }),
   items: many(saleItems),
 }));

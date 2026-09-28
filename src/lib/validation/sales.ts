@@ -9,7 +9,7 @@ const saleItemInputSchema = z.object({
 });
 
 export const createSaleSchema = z.object({
-  customerId: z.string().uuid().optional(),
+  partyId: z.string().uuid().optional(),
   saleDate: z.string().optional(),
   vatRate: z.number().nonnegative().max(100).default(13),
   discount: z.number().nonnegative().default(0),
@@ -25,7 +25,7 @@ export const createSaleSchema = z.object({
 });
 
 export const updateSaleSchema = z.object({
-  customerId: z.string().uuid().optional(),
+  partyId: z.string().uuid().optional(),
   saleDate: z.string().optional(),
   vatRate: z.number().nonnegative().max(100).default(13),
   discount: z.number().nonnegative().default(0),

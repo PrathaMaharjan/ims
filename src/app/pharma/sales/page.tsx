@@ -80,8 +80,8 @@ interface SaleForm {
   paymentType: PaymentType;
   vatRate: Num;
   roundingDirection: RoundingDirection;
-  customerId: string;
-  customerName: string;
+  partyId: string;
+  partyName: string;
   items: LineItemForm[];
   discounts: DiscountRowForm[];
   prescriptionNote: string;
@@ -94,7 +94,7 @@ interface SaleRecord {
   saleDate: string;
   paymentType: PaymentType;
   roundingDirection: RoundingDirection;
-  customerId: string | null;
+  partyId: string | null;
   subtotal: string;
   discount: string;
   freightCharges?: string;
@@ -103,7 +103,7 @@ interface SaleRecord {
   vatAmount: string;
   grandTotal: string;
   prescriptionNote: string | null;
-  customer?: { id: string; name: string } | null;
+  party?: { id: string; name: string } | null;
   items: Array<{
     id: string;
     productId: string;
@@ -175,8 +175,8 @@ function emptyForm(): SaleForm {
     paymentType: "CASH",
     vatRate: 13,
     roundingDirection: "DOWN",
-    customerId: "",
-    customerName: "",
+    partyId: "",
+    partyName: "",
     items: [emptyLine()],
     discounts: [],
     prescriptionNote: "",
@@ -610,10 +610,10 @@ export default function SalesPage() {
       try {
         const [productsRes, customersRes] = await Promise.all([
           api.get("/api/product"),
-          api.get("/api/customers", { params: { limit: 100 } }),
+          api.get("/api/parties", { params: { limit: 100, type: "CUSTOMER" } }),
         ]);
         setProducts(productsRes.data.products);
-        setCustomers(customersRes.data.customers);
+        setCustomers(customersRes.data.parties);
       } catch {
         setLoadError("Failed to load products/customers.");
       } finally {
@@ -680,7 +680,7 @@ export default function SalesPage() {
       const q = search.toLowerCase();
       return (
         invoiceLabel(s.invoiceNumber).toLowerCase().includes(q) ||
-        (s.customer?.name ?? "").toLowerCase().includes(q) ||
+        (s.party?.name ?? "").toLowerCase().includes(q) ||
         (s.prescriptionNote ?? "").toLowerCase().includes(q)
       );
     })
@@ -701,21 +701,22 @@ export default function SalesPage() {
     setSavingInlineCust(true);
     setInlineCustError(null);
 
-    const payload: { name: string; phone?: string; email?: string; address?: string } = {
+    const payload: { name: string; partyType: "CUSTOMER"; phone?: string; email?: string; address?: string } = {
       name: inlineCust.name.trim(),
+      partyType: "CUSTOMER",
     };
     if (inlineCust.phone.trim()) payload.phone = inlineCust.phone.trim();
     if (inlineCust.email.trim()) payload.email = inlineCust.email.trim();
     if (inlineCust.address.trim()) payload.address = inlineCust.address.trim();
 
     try {
-      const res = await api.post("/api/customers", payload);
-      const created: Customer = res.data.customer;
+      const res = await api.post("/api/parties", payload);
+      const created: Customer = res.data.party;
       setCustomers((prev) => [created, ...prev]);
       setForm((p) => ({
         ...p,
-        customerId: created.id,
-        customerName: created.name,
+        partyId: created.id,
+        partyName: created.name,
       }));
       setShowNewCustomerInline(false);
       setInlineCust({ name: "", phone: "", email: "", address: "" });
@@ -772,8 +773,8 @@ export default function SalesPage() {
       paymentType: record.paymentType,
       vatRate: 13, // not persisted per-sale, same known limitation as purchases
       roundingDirection: record.roundingDirection,
-      customerId: record.customer?.id ?? "",
-      customerName: record.customer?.name ?? "",
+      partyId: record.party?.id ?? "",
+      partyName: record.party?.name ?? "",
       prescriptionNote: record.prescriptionNote ?? "",
       discounts: [
         ...(Number(record.discount) > 0
@@ -934,7 +935,7 @@ export default function SalesPage() {
           : 0;
 
     return {
-      customerId: form.customerId || undefined,
+      partyId: form.partyId || undefined,
       saleDate: form.date,
       paymentType: form.paymentType,
       vatRate: n(form.vatRate),
@@ -1135,8 +1136,8 @@ export default function SalesPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      {s.customer?.name ? (
-                        <div className="flex items-center gap-1.5 font-medium text-slate-800"><User className="w-3.5 h-3.5 text-slate-400" /><span>{s.customer.name}</span></div>
+                      {s.party?.name ? (
+                        <div className="flex items-center gap-1.5 font-medium text-slate-800"><User className="w-3.5 h-3.5 text-slate-400" /><span>{s.party.name}</span></div>
                       ) : (
                         <span className="text-xs text-slate-400 italic">Walk-in (Cash)</span>
                       )}
@@ -1236,7 +1237,7 @@ export default function SalesPage() {
                       {viewingSale.paymentType === "CASH" ? "Cash" : "Credit"}
                     </span>
                   </div>
-                  <p className="text-xs text-white/70 mt-0.5">Date: {viewingSale.saleDate.slice(0, 10)} · Customer: {viewingSale.customer?.name || "Walk-in Cash Customer"}</p>
+                  <p className="text-xs text-white/70 mt-0.5">Date: {viewingSale.saleDate.slice(0, 10)} · Customer: {viewingSale.party?.name || "Walk-in Cash Customer"}</p>
                 </div>
               </div>
               <button type="button" onClick={() => setViewingSale(null)} className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white"><X className="w-5 h-5" /></button>
@@ -1254,7 +1255,7 @@ export default function SalesPage() {
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium uppercase text-[10px]">Customer</span>
-                  <span className="font-semibold text-slate-800 text-sm mt-0.5 block">{viewingSale.customer?.name || "Walk-in Cash"}</span>
+                  <span className="font-semibold text-slate-800 text-sm mt-0.5 block">{viewingSale.party?.name || "Walk-in Cash"}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium uppercase text-[10px]">Payment Type</span>
@@ -1504,15 +1505,15 @@ export default function SalesPage() {
                         <>
                           <CustomerCombobox
                             customers={customers}
-                            selectedId={form.customerId}
-                            selectedName={form.customerName}
-                            onSelectCustomer={(cust) => setForm((p) => ({ ...p, customerId: cust ? cust.id : "", customerName: cust ? cust.name : "" }))}
+                            selectedId={form.partyId}
+                            selectedName={form.partyName}
+                            onSelectCustomer={(cust) => setForm((p) => ({ ...p, partyId: cust ? cust.id : "", partyName: cust ? cust.name : "" }))}
                             onStartNewCustomer={handleStartNewCustomerInline}
                           />
-                          {form.customerId && (
+                          {form.partyId && (
                             <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[11px] text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
                               {(() => {
-                                const c = customers.find((x) => x.id === form.customerId);
+                                const c = customers.find((x) => x.id === form.partyId);
                                 if (!c) return null;
                                 return (
                                   <>

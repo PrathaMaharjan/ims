@@ -1,8 +1,10 @@
-import { createCustomer, listCustomers } from "@/controller/customer/controller";
+import { createParty, listParties } from "@/controller/party/controller";
 import { getAuth } from "@/lib/auth/require-auth";
-import { createCustomerSchema, listCustomersQuerySchema } from "@/lib/validation/customer";
+import { getCached, setCached } from "@/lib/cache";
+import { createPartySchema, listPartiesQuerySchema } from "@/lib/validation/party";
 import { NextRequest, NextResponse } from "next/server";
 
+// GET /api/parties?type=SUPPLIER|CUSTOMER&search=&page=&limit=
 export async function GET(req: NextRequest) {
   try {
     const auth = getAuth(req);
@@ -10,7 +12,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const parsed = listCustomersQuerySchema.safeParse(
+    const parsed = listPartiesQuerySchema.safeParse(
       Object.fromEntries(req.nextUrl.searchParams)
     );
 
@@ -21,10 +23,20 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const result = await listCustomers(auth.organizationId, parsed.data);
+    const { page, limit, search, type } = parsed.data;
+    const cacheKey = `parties:list:${auth.organizationId}:type=${type ?? ""}:page=${page}:limit=${limit}:search=${search ?? ""}`;
+
+    const cached = await getCached(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+
+    const result = await listParties(auth.organizationId, parsed.data);
+    await setCached(cacheKey, result, 60 * 5);
+
     return NextResponse.json(result);
   } catch (error) {
-    console.error("GET /customers failed:", error);
+    console.error("GET /parties failed:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
 }
@@ -37,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const parsed = createCustomerSchema.safeParse(body);
+    const parsed = createPartySchema.safeParse(body);
 
     if (!parsed.success) {
       return NextResponse.json(
@@ -46,11 +58,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const created = await createCustomer(auth.organizationId, parsed.data);
-    return NextResponse.json({ customer: created }, { status: 201 });
+    const created = await createParty(auth.organizationId, parsed.data);
+    return NextResponse.json({ party: created }, { status: 201 });
   } catch (error) {
-    console.error("POST /customers failed:", error);
+    console.error("POST /parties failed:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
 }
-

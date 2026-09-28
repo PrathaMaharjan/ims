@@ -36,7 +36,7 @@ export interface BatchItem {
   productId: string;
   productName: string;
   unit: string;
-  supplierName: string | null;
+  partyName: string | null;
   expiryDate: string; // e.g. "2026-10-12"
   daysLeft: number;
   quantityAvailable: number;
@@ -297,7 +297,7 @@ export default function BatchesPage() {
       (b) =>
         b.batchNumber?.toLowerCase().includes(q) ||
         b.productName?.toLowerCase().includes(q) ||
-        b.supplierName?.toLowerCase().includes(q),
+        b.partyName?.toLowerCase().includes(q),
     );
   }, [batches, searchQuery]);
 
@@ -512,11 +512,11 @@ export default function BatchesPage() {
                         </div>
                       </td>
                       <td className="py-3 px-4 text-slate-500">
-                        {b.supplierName ? (
+                        {b.partyName ? (
                           <span className="flex items-center gap-1">
                             <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                             <span className="truncate max-w-[140px]">
-                              {b.supplierName}
+                              {b.partyName}
                             </span>
                           </span>
                         ) : (
@@ -770,7 +770,7 @@ export default function BatchesPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500">Supplier</span>
                       <span className="font-semibold text-slate-800">
-                        {selectedBatch.supplierName ||
+                        {selectedBatch.partyName ||
                           "Not linked to a supplier"}
                       </span>
                     </div>

@@ -1,12 +1,13 @@
 import { db } from "../index";
-import { suppliers } from "../schema";
+import { parties } from "../schema";
 
 export async function seedSuppliers(organizationId: string) {
   const seededSuppliers = await db
-    .insert(suppliers)
+    .insert(parties)
     .values([
       {
         organizationId,
+        partyType: "SUPPLIER" as const,
         name: "ABC Distributors",
         panVatNumber: "600112233",
         address: "New Road, Kathmandu",
@@ -17,6 +18,7 @@ export async function seedSuppliers(organizationId: string) {
       },
       {
         organizationId,
+        partyType: "SUPPLIER" as const,
         name: "MedSupply Pvt. Ltd.",
         panVatNumber: "600223344",
         address: "Putalisadak, Kathmandu",
@@ -27,6 +29,7 @@ export async function seedSuppliers(organizationId: string) {
       },
       {
         organizationId,
+        partyType: "SUPPLIER" as const,
         name: "City Pharma Distributors",
         panVatNumber: "600334455",
         address: "Baneshwor, Kathmandu",

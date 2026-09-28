@@ -53,7 +53,7 @@ export async function createSale(
     .values({
       organizationId,
       invoiceNumber,
-      customerId: input.customerId,
+      partyId: input.partyId,
       saleDate: input.saleDate ? new Date(input.saleDate) : new Date(),
       roundingDirection: input.roundingDirection,
       subtotal: totals.subtotal.toFixed(2),
@@ -384,7 +384,7 @@ export async function updateSale(
     await db
       .update(sales)
       .set({
-        customerId: input.customerId,
+        partyId: input.partyId,
         saleDate: input.saleDate ? new Date(input.saleDate) : undefined,
         paymentType: input.paymentType,
         roundingDirection: input.roundingDirection,

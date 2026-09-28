@@ -1,7 +1,7 @@
 import { pgTable, uuid, varchar, date, numeric, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { organizations } from "./organizations";
-import { suppliers } from "./suppliers";
+import { parties } from "./parties";
 import { products } from "./products";
 import { batches } from "./batches";
 import { users } from "./users";
@@ -12,9 +12,9 @@ export const purchases = pgTable("purchases", {
   organizationId: uuid("organization_id")
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
-  supplierId: uuid("supplier_id")
+  partyId: uuid("party_id")
     .notNull()
-    .references(() => suppliers.id, { onDelete: "restrict" }),
+    .references(() => parties.id, { onDelete: "restrict" }),
   supplierInvoiceNumber: varchar("supplier_invoice_number", { length: 100 }),
   purchaseDate: date("purchase_date").notNull(),
   purcType: purcTypeEnum("purc_type").notNull().default("VAT_ITEM_WISE"),
@@ -60,9 +60,9 @@ export const purchaseItems = pgTable("purchase_items", {
 });
 
 export const purchasesRelations = relations(purchases, ({ one, many }) => ({
-  supplier: one(suppliers, {
-    fields: [purchases.supplierId],
-    references: [suppliers.id],
+  party: one(parties, {
+    fields: [purchases.partyId],
+    references: [parties.id],
   }),
   items: many(purchaseItems),
 }));

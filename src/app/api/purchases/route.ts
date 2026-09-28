@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
         where: whereClause,
         with: {
           items: true,
-          supplier: { columns: { id: true, name: true } }, // added — no separate fetch needed
+          party: { columns: { id: true, name: true } }, // added — no separate fetch needed
         },
         orderBy: (table, { desc }) => [desc(table.createdAt)],
         limit,

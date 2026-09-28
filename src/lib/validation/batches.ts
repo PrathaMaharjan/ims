@@ -10,7 +10,7 @@ export const batchDetailsSchema = z.object({
   note: z.string().max(1000).optional(),
   mrp: z.number().nonnegative().optional(),
   salePrice: z.number().nonnegative().optional(),
-  supplierId: z.string().uuid().optional(), // per-line override; falls back to the purchase's supplierId if omitted
+  partyId: z.string().uuid().optional(), // per-line override; falls back to the purchase's partyId if omitted
 });
 
 export type BatchDetailsInput = z.infer<typeof batchDetailsSchema>;

@@ -88,8 +88,8 @@ interface PurchaseForm {
   paymentType: PaymentType;
   purcType: PurcType;
   vatRate: Num;
-  supplierId: string;
-  supplierName: string;
+  partyId: string;
+  partyName: string;
   items: LineItemForm[];
   discounts: DiscountRowForm[];
   roundingDirection: RoundingDirection;
@@ -111,7 +111,7 @@ interface PurchaseRecord {
   vatRefund: string;
   roundOff?: string;
   grandTotal: string;
-  supplier?: Supplier;
+  party?: Supplier;
   items: Array<{
     id: string;
     productId: string;
@@ -164,8 +164,8 @@ function emptyForm(): PurchaseForm {
     paymentType: "CASH",
     purcType: "VAT_EXEMPT",
     vatRate: 13,
-    supplierId: "",
-    supplierName: "",
+    partyId: "",
+    partyName: "",
     items: [emptyLine()],
     discounts: [],
     roundingDirection: "DOWN",
@@ -541,10 +541,10 @@ export default function PurchasePage() {
       try {
         const [productsRes, suppliersRes] = await Promise.all([
           api.get("/api/product"),
-          api.get("/api/supplier", { params: { limit: 100 } }),
+          api.get("/api/parties", { params: { limit: 100, type: "SUPPLIER" } }),
         ]);
         setProducts(productsRes.data.products);
-        setSuppliers(suppliersRes.data.suppliers);
+        setSuppliers(suppliersRes.data.parties);
       } catch {
         setLoadError("Failed to load products/suppliers.");
       } finally {
@@ -622,7 +622,7 @@ export default function PurchasePage() {
       }
 
       // 3. Supplier filter
-      if (supplierFilter !== "ALL" && p.supplier?.id !== supplierFilter) {
+      if (supplierFilter !== "ALL" && p.party?.id !== supplierFilter) {
         return false;
       }
 
@@ -639,7 +639,7 @@ export default function PurchasePage() {
       if (search.trim()) {
         const q = search.toLowerCase().trim();
         const invoiceMatch = p.supplierInvoiceNumber?.toLowerCase().includes(q) ?? false;
-        const supplierMatch = p.supplier?.name?.toLowerCase().includes(q) ?? false;
+        const supplierMatch = p.party?.name?.toLowerCase().includes(q) ?? false;
         const dateMatch = p.purchaseDate?.includes(q) ?? false;
         const totalMatch = p.grandTotal?.includes(q) ?? false;
         const itemsMatch = p.items?.some((it) => {
@@ -712,8 +712,8 @@ export default function PurchasePage() {
       paymentType: record.paymentType,
       purcType: record.purcType,
       vatRate: 13,
-      supplierId: record.supplier?.id ?? "",
-      supplierName: record.supplier?.name ?? "",
+      partyId: record.party?.id ?? "",
+      partyName: record.party?.name ?? "",
       items: record.items.map((it) => {
   const product = products.find((p) => p.id === it.productId);
   return {
@@ -872,7 +872,7 @@ function buildPayload() {
       : 0;
 
   return {
-    supplierId: form.supplierId,
+    partyId: form.partyId,
     supplierInvoiceNumber: form.supplierInvoiceNumber.trim() || undefined,
     purchaseDate: form.date,
     purcType: form.purcType,
@@ -903,7 +903,7 @@ function buildPayload() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.supplierId || validItems.length === 0 || missingBatch || missingExpiry) return;
+    if (!form.partyId || validItems.length === 0 || missingBatch || missingExpiry) return;
 
     setSaving(true);
     setSaveError(null);
@@ -1168,7 +1168,7 @@ function buildPayload() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-xs text-slate-500">{PURC_TYPE_LABELS[p.purcType]}</td>
-                    <td className="py-3 px-4 text-slate-500">{p.supplier?.name || "—"}</td>
+                    <td className="py-3 px-4 text-slate-500">{p.party?.name || "—"}</td>
                     <td className="py-3 px-4 max-w-xs">
                       <div className="flex flex-col gap-1">
                         {p.items.slice(0, 2).map((li, i) => {
@@ -1299,7 +1299,7 @@ function buildPayload() {
                       {viewingPurchase.paymentType === "CASH" ? "Cash" : "Credit"}
                     </span>
                   </div>
-                  <p className="text-xs text-white/70 mt-0.5 break-words">Date: {viewingPurchase.purchaseDate} · Supplier: {viewingPurchase.supplier?.name || "—"}</p>
+                  <p className="text-xs text-white/70 mt-0.5 break-words">Date: {viewingPurchase.purchaseDate} · Supplier: {viewingPurchase.party?.name || "—"}</p>
                 </div>
               </div>
               <button type="button" onClick={() => setViewingPurchase(null)} className="shrink-0 rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
@@ -1456,9 +1456,9 @@ function buildPayload() {
                     </Field>
                     <Field label="Supplier">
                       <SupplierPicker
-                        value={form.supplierId}
+                        value={form.partyId}
                         suppliers={suppliers}
-                        onSelect={s => setForm(p => ({ ...p, supplierId: s.id, supplierName: s.name }))}
+                        onSelect={s => setForm(p => ({ ...p, partyId: s.id, partyName: s.name }))}
                       />
                     </Field>
                     <Field label="Payment Type">
@@ -1844,7 +1844,7 @@ function buildPayload() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving || !form.supplierId || validItems.length === 0 || missingBatch || missingExpiry}
+                  disabled={saving || !form.partyId || validItems.length === 0 || missingBatch || missingExpiry}
                   className="flex-1 rounded-lg bg-[#044d73] hover:bg-[#033f60] py-2.5 text-sm font-medium text-white shadow-sm transition-colors disabled:opacity-40"
                 >
                   {saving ? "Saving..." : editingPurchaseId ? "Save Changes" : "Save Purchase"}

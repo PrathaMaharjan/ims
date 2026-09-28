@@ -1,17 +1,15 @@
 import { pgTable, uuid, varchar, numeric, date, text, timestamp } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { organizations } from "./organizations";
-import { suppliers } from "./suppliers";
-import { customers } from "./customers";
+import { parties } from "./parties";
 import { purchases } from "./purchases";
 import { sales } from "./sales";
 import { users } from "./users";
 import { paymentDirectionEnum } from "./enums";
 
-// One table for both directions: money paid to a supplier (against a purchase)
-// or received from a customer (against a sale). Exactly one of
-// (supplierId + purchaseId) or (customerId + saleId) should be set,
-// matching `direction` — enforce this in application code.
+// One table for both directions: money paid to a party (against a purchase)
+// or received from a party (against a sale). Exactly one of purchaseId or
+// saleId should be set, matching `direction` — enforce this in application code.
 export const payments = pgTable("payments", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id")
@@ -19,16 +17,14 @@ export const payments = pgTable("payments", {
     .references(() => organizations.id, { onDelete: "cascade" }),
   direction: paymentDirectionEnum("direction").notNull(),
 
-  supplierId: uuid("supplier_id").references(() => suppliers.id, {
+  partyId: uuid("party_id").references(() => parties.id, {
     onDelete: "set null",
   }),
+
   purchaseId: uuid("purchase_id").references(() => purchases.id, {
     onDelete: "set null",
   }),
 
-  customerId: uuid("customer_id").references(() => customers.id, {
-    onDelete: "set null",
-  }),
   saleId: uuid("sale_id").references(() => sales.id, {
     onDelete: "set null",
   }),
@@ -45,17 +41,13 @@ export const payments = pgTable("payments", {
 });
 
 export const paymentsRelations = relations(payments, ({ one }) => ({
-  supplier: one(suppliers, {
-    fields: [payments.supplierId],
-    references: [suppliers.id],
+  party: one(parties, {
+    fields: [payments.partyId],
+    references: [parties.id],
   }),
   purchase: one(purchases, {
     fields: [payments.purchaseId],
     references: [purchases.id],
-  }),
-  customer: one(customers, {
-    fields: [payments.customerId],
-    references: [customers.id],
   }),
   sale: one(sales, {
     fields: [payments.saleId],

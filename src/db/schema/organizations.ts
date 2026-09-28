@@ -2,9 +2,8 @@ import { pgTable, uuid, varchar, text, boolean, integer, timestamp } from "drizz
 import { relations } from "drizzle-orm";
 import { sales } from "./sales";
 import { purchases } from "./purchases";
-import { customers } from "./customers";
 import { batches } from "./batches";
-import { suppliers } from "./suppliers";
+import { parties } from "./parties";
 import { products } from "./products";
 import { users } from "./users";
 
@@ -28,9 +27,8 @@ export const organizations = pgTable("organizations", {
 export const organizationsRelations = relations(organizations, ({ many }) => ({
   users: many(users),
   products: many(products),
-  suppliers: many(suppliers),
+  parties: many(parties),
   batches: many(batches),
-  customers: many(customers),
   purchases: many(purchases),
   sales: many(sales),
 }));

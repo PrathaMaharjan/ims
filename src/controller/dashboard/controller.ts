@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { batches, categories, customers, expenseCategories, expenses, organizations, products, purchases, saleItems, sales, suppliers } from "@/db/schema";
+import { batches, categories, expenseCategories, expenses, organizations, parties, products, purchases, saleItems, sales } from "@/db/schema";
 import { DashboardSummaryQuery } from "@/lib/validation/dashboard";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 
@@ -253,10 +253,10 @@ export async function getRecentTransactions(organizationId: string, limit = 10) 
         amount: sales.grandTotal,
         date: sales.saleDate,
         paymentType: sales.paymentType,
-        customerName: customers.name,
+        partyName: parties.name,
       })
       .from(sales)
-      .leftJoin(customers, eq(sales.customerId, customers.id))
+      .leftJoin(parties, eq(sales.partyId, parties.id))
       .where(eq(sales.organizationId, organizationId))
       .orderBy(desc(sales.saleDate))
       .limit(limit),
@@ -268,10 +268,10 @@ export async function getRecentTransactions(organizationId: string, limit = 10) 
         amount: purchases.grandTotal,
         date: purchases.purchaseDate,
         paymentType: purchases.paymentType,
-        supplierName: suppliers.name,
+        partyName: parties.name,
       })
       .from(purchases)
-      .innerJoin(suppliers, eq(purchases.supplierId, suppliers.id))
+      .innerJoin(parties, eq(purchases.partyId, parties.id))
       .where(eq(purchases.organizationId, organizationId))
       .orderBy(desc(purchases.purchaseDate))
       .limit(limit),
@@ -296,7 +296,7 @@ export async function getRecentTransactions(organizationId: string, limit = 10) 
       type: "SALE" as const,
       id: r.id,
       voucherNo: `VCH-${r.invoiceNumber}`,
-      partyName: r.customerName ?? "Walk-in Patient",
+      partyName: r.partyName ?? "Walk-in Patient",
       amount: r.amount,
       date: r.date,
       paymentType: r.paymentType,
@@ -305,7 +305,7 @@ export async function getRecentTransactions(organizationId: string, limit = 10) 
       type: "PURCHASE" as const,
       id: r.id,
       voucherNo: r.supplierInvoiceNumber ?? `PUR-${r.id.slice(0, 8)}`,
-      partyName: r.supplierName,
+      partyName: r.partyName,
       amount: r.amount,
       date: r.date,
       paymentType: r.paymentType,

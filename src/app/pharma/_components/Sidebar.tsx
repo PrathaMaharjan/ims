@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     ChevronLeft, ChevronRight, ChevronDown, LogOut, Menu, X,
-    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Contact, Layers,
+    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Layers,
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 
-type IconKey = 'dashboard' | 'inventory' | 'batches' | 'purchase' | 'sales' | 'customers' | 'suppliers' | 'expense' | 'analytics' | 'settings';
+type IconKey = 'dashboard' | 'inventory' | 'batches' | 'purchase' | 'sales' | 'parties' | 'expense' | 'analytics' | 'settings';
 
 const iconMap: Record<IconKey, LucideIcon> = {
     dashboard: LayoutDashboard,
@@ -18,8 +18,7 @@ const iconMap: Record<IconKey, LucideIcon> = {
     batches: Layers,
     purchase: Receipt,
     sales: ShoppingCart,
-    customers: Contact,
-    suppliers: Users,
+    parties: Users,
     expense: Wallet,
     analytics: BarChart3,
     settings: Settings,
@@ -59,18 +58,7 @@ const defaultEntries: NavEntry[] = [
             ],
         },
     },
-    {
-        type: 'group',
-        group: {
-            id: 'contacts',
-            label: 'Contacts',
-            icon: 'suppliers',
-            items: [
-                { match: '/pharma/customers', href: '/pharma/customers', label: 'Customers', icon: 'customers' },
-                { match: '/pharma/suppliers', href: '/pharma/suppliers', label: 'Suppliers', icon: 'suppliers' },
-            ],
-        },
-    },
+    { type: 'item', item: { match: '/pharma/parties', href: '/pharma/parties', label: 'Parties', icon: 'parties' } },
     {
         type: 'group',
         group: {

@@ -20,6 +20,7 @@ export type BatchDetailsInput = z.infer<typeof batchDetailsSchema>;
 export const updateBatchSchema = z.object({
   batchNumber: z.string().trim().min(1).max(100).optional(),
   expiryDate: z.string().min(1).optional(),
+  manufacturingDate: z.string().nullable().optional(),
   quantityAvailable: z.number().int().nonnegative().optional(),
   purchasePrice: z.number().nonnegative().optional(),
   mrp: z.number().nonnegative().optional(),

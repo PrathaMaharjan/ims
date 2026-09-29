@@ -118,17 +118,6 @@ const DEFAULT_UNITS = [
   "ml",
 ];
 
-const DEFAULT_BRANDS = [
-  "Cipla",
-  "Sun Pharma",
-  "Torrent Pharma",
-  "Alkem",
-  "Abbott",
-  "Deurali-Janta",
-  "Nepal Pharmaceuticals",
-  "Apex Healthcare",
-  "Generic",
-];
 
 const EMPTY_FORM: ItemForm = {
   name: "",
@@ -421,8 +410,8 @@ function CreatableSelect({
           onClick={() => setManaging((p) => !p)}
           title={`Manage / Delete ${noun}s`}
           className={`shrink-0 rounded-lg border px-2.5 transition-colors ${managing
-              ? "border-[#044d73] bg-[#044d73] text-white"
-              : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
+            ? "border-[#044d73] bg-[#044d73] text-white"
+            : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
             }`}
         >
           <ListFilter className="h-4 w-4" />
@@ -500,7 +489,7 @@ function CreatableSelect({
 export default function InventoryPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
-  const [brands, setBrands] = useState<string[]>(DEFAULT_BRANDS);
+  const [brands, setBrands] = useState<string[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
 
   const [loadingCatalog, setLoadingCatalog] = useState(true);
@@ -521,6 +510,14 @@ export default function InventoryPage() {
         const apiProducts: ApiProduct[] = productsRes.data.products;
         setCategories(cats);
         setItems(apiProducts.map((p) => toItem(p, categoryNameById)));
+        const existingBrands = Array.from(
+          new Set(
+            apiProducts
+              .map((p) => p.manufacturer?.trim())
+              .filter((b): b is string => Boolean(b)),
+          ),
+        ).sort();
+        setBrands(existingBrands);
       } catch {
         setCatalogError("Failed to load products/categories.");
       } finally {
@@ -640,6 +637,7 @@ export default function InventoryPage() {
     setBrands((prev) => prev.filter((b) => b !== brandToDelete));
     if (form.brand === brandToDelete) setForm((p) => ({ ...p, brand: "" }));
   }
+
 
   async function addCategory(raw: string): Promise<string | null> {
     const name = raw.trim();
@@ -1495,7 +1493,7 @@ export default function InventoryPage() {
                   </Field>
                   <Field
                     label="Brand / Manufacturer"
-                    hint="Pick existing, click + to add new, or use list button to manage/delete"
+
                   >
                     <CreatableSelect
                       value={form.brand}
@@ -1509,7 +1507,7 @@ export default function InventoryPage() {
                   </Field>
                   <Field
                     label="Category"
-                    hint="Pick existing, click + to add new, or use list button to manage/delete"
+
                   >
                     <CreatableSelect
                       value={form.category}

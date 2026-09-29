@@ -194,10 +194,10 @@ function tomorrow(): string {
 }
 
 const selectCls =
-  "rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none";
+  "rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-[#044d73] focus:ring-1 focus:ring-[#044d73] focus:outline-none";
 
 const inputCls =
-  "mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#044d73] focus:outline-none";
+  "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#044d73] focus:ring-1 focus:ring-[#044d73] focus:outline-none transition-colors";
 
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
@@ -234,6 +234,7 @@ export default function BatchesPage() {
   const [panel, setPanel] = useState<ActionPanel>("none");
   const [returnQty, setReturnQty] = useState("");
   const [returnReason, setReturnReason] = useState("");
+  const [writeOffReason, setWriteOffReason] = useState("");
 
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [resolution, setResolution] = useState<"MONEY" | "QUANTITY">("MONEY");
@@ -437,6 +438,7 @@ export default function BatchesPage() {
     setPanel("none");
     setCompletingId(null);
     setActionError("");
+    setWriteOffReason("");
   }
 
   // POST /api/purchase-returns
@@ -468,8 +470,12 @@ export default function BatchesPage() {
     setSaving(true);
     setActionError("");
     try {
-      await api.post("/api/purchases/writeoff", { batchId: selectedBatch.batchId });
+      await api.post("/api/purchases/writeoff", {
+        batchId: selectedBatch.batchId,
+        reason: writeOffReason.trim() || undefined,
+      });
       setPanel("none");
+      setWriteOffReason("");
       // Stay on the modal so the "Written off" state shows right here
       refreshAll();
     } catch (err) {
@@ -868,17 +874,6 @@ export default function BatchesPage() {
 
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenEdit(b);
-                            }}
-                            title="Edit batch"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1297,6 +1292,7 @@ export default function BatchesPage() {
                           type="number"
                           min={1}
                           max={selectedBatch.quantityAvailable}
+                          placeholder={`Enter quantity (e.g. ${selectedBatch.quantityAvailable})`}
                           value={returnQty}
                           onChange={(e) => setReturnQty(e.target.value)}
                           className={inputCls}
@@ -1307,6 +1303,7 @@ export default function BatchesPage() {
                           Reason (Optional, e.g. Expired / Damaged / Near Expiry)
                         </label>
                         <input
+                          type="text"
                           placeholder="e.g. Expired batch return for credit note"
                           value={returnReason}
                           onChange={(e) => setReturnReason(e.target.value)}
@@ -1361,6 +1358,35 @@ export default function BatchesPage() {
                         <strong className="text-red-700">{rs(selectedBatch.valueAtRisk)}</strong> under <em>Inventory Write-off</em> expenses.
                         This cannot be undone.
                       </p>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                          Quantity to Write Off ({selectedBatch.unit})
+                        </label>
+                        <input
+                          type="number"
+                          disabled
+                          value={selectedBatch.quantityAvailable}
+                          className={`${inputCls} bg-slate-100/90 text-slate-600 cursor-not-allowed border-slate-200`}
+                        />
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Write-off removes the full remaining stock ({selectedBatch.quantityAvailable} {selectedBatch.unit}) from inventory.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                          Reason / Note (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Expired on shelf, damaged packaging, discarded"
+                          value={writeOffReason}
+                          onChange={(e) => setWriteOffReason(e.target.value)}
+                          className={inputCls}
+                        />
+                      </div>
+
                       {actionError && <p className="text-xs text-red-600 font-medium">{actionError}</p>}
                       <div className="flex justify-end gap-2 pt-1">
                         <button
@@ -1368,6 +1394,7 @@ export default function BatchesPage() {
                           onClick={() => {
                             setPanel("none");
                             setActionError("");
+                            setWriteOffReason("");
                           }}
                           className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors"
                         >
@@ -1642,7 +1669,7 @@ export default function BatchesPage() {
                       required
                       value={editForm.batchNumber}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, batchNumber: e.target.value }))}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
                     />
                   </div>
 
@@ -1656,7 +1683,7 @@ export default function BatchesPage() {
                       required
                       value={editForm.expiryDate}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, expiryDate: e.target.value }))}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
                     />
                   </div>
 
@@ -1671,7 +1698,7 @@ export default function BatchesPage() {
                       required
                       value={editForm.quantityAvailable}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, quantityAvailable: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
                     />
                   </div>
 
@@ -1687,7 +1714,7 @@ export default function BatchesPage() {
                       required
                       value={editForm.purchasePrice}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, purchasePrice: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
                     />
                   </div>
 
@@ -1703,7 +1730,7 @@ export default function BatchesPage() {
                       placeholder="Optional"
                       value={editForm.mrp}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, mrp: e.target.value }))}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
                     />
                   </div>
 
@@ -1719,7 +1746,7 @@ export default function BatchesPage() {
                       placeholder="Optional"
                       value={editForm.salePrice}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, salePrice: e.target.value }))}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
                     />
                   </div>
                 </div>
@@ -1734,7 +1761,7 @@ export default function BatchesPage() {
                     placeholder="e.g. Shelf A-3, supplier promo batch..."
                     value={editForm.note}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, note: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all resize-none"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all resize-none"
                   />
                 </div>
               </div>

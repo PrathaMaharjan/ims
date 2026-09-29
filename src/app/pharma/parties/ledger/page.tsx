@@ -37,9 +37,7 @@ export default function GeneralLedgerRedirect() {
       <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Party Ledger</h1>
-          <p className="text-xs sm:text-sm text-white/80 mt-1">
-            Party account ledger and transaction statement
-          </p>
+
         </div>
         <Link
           href="/pharma/parties"

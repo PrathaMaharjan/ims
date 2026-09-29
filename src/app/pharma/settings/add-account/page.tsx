@@ -40,8 +40,7 @@ interface Pagination {
   totalPages: number;
 }
 
-// Pull a readable message out of an axios error so a Zod flatten() object
-// never reaches the screen as [object Object].
+
 function getErrorMessage(err: unknown, fallback: string): string {
   const data = (err as { response?: { data?: any } })?.response?.data;
   if (!data) return fallback;
@@ -598,8 +597,8 @@ export default function AddAccountPage() {
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         className={`w-full rounded-lg border pl-9 pr-9 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-all ${passwordsMismatch
-                            ? "border-rose-300 focus:ring-rose-500"
-                            : "border-slate-200 focus:ring-[#044d73] focus:border-transparent"
+                          ? "border-rose-300 focus:ring-rose-500"
+                          : "border-slate-200 focus:ring-[#044d73] focus:border-transparent"
                           }`}
                       />
                       <button

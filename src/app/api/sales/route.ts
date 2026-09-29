@@ -27,7 +27,14 @@ export async function GET(req: NextRequest) {
     const [rows, countResult] = await Promise.all([
       db.query.sales.findMany({
         where: whereClause,
-        with: { items: true, party: { columns: { id: true, name: true } } },
+        with: {
+          items: {
+            with: {
+              batch: true,
+            },
+          },
+          party: { columns: { id: true, name: true } },
+        },
         orderBy: (table, { desc }) => [desc(table.invoiceNumber)],
         limit,
         offset,

@@ -22,6 +22,8 @@ import {
   Trash2,
   DollarSign,
   ArrowDownLeft,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
@@ -241,6 +243,93 @@ export default function BatchesPage() {
 
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState("");
+
+  // Edit batch modal state (frontend)
+  const [editingBatch, setEditingBatch] = useState<BatchItem | null>(null);
+  const [editForm, setEditForm] = useState({
+    batchNumber: "",
+    expiryDate: "",
+    quantityAvailable: 0,
+    purchasePrice: 0,
+    mrp: "",
+    salePrice: "",
+    note: "",
+  });
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  function triggerToast(msg: string) {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  }
+
+  function handleOpenEdit(batch: BatchItem) {
+    setEditingBatch(batch);
+    setEditForm({
+      batchNumber: batch.batchNumber,
+      expiryDate: batch.expiryDate,
+      quantityAvailable: batch.quantityAvailable,
+      purchasePrice: batch.purchasePrice,
+      mrp: (batch as any).mrp ? String((batch as any).mrp) : "",
+      salePrice: (batch as any).salePrice ? String((batch as any).salePrice) : "",
+      note: batch.note ?? "",
+    });
+  }
+
+  function handleCloseEdit() {
+    setEditingBatch(null);
+  }
+
+  function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingBatch) return;
+
+    const expDate = new Date(editForm.expiryDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    expDate.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const newStatus: ExpiryStatus = diffDays <= 0 ? "EXPIRED" : diffDays <= withinDays ? "NEAR_EXPIRY" : "ACTIVE";
+    const qty = Math.max(0, Number(editForm.quantityAvailable) || 0);
+    const cost = Math.max(0, Number(editForm.purchasePrice) || 0);
+
+    setBatches((prev) =>
+      prev.map((b) =>
+        b.batchId === editingBatch.batchId
+          ? {
+              ...b,
+              batchNumber: editForm.batchNumber.trim(),
+              expiryDate: editForm.expiryDate,
+              quantityAvailable: qty,
+              purchasePrice: cost,
+              valueAtRisk: qty * cost,
+              note: editForm.note.trim() || null,
+              daysLeft: diffDays,
+              status: newStatus,
+            }
+          : b
+      )
+    );
+
+    // Also update selectedBatch if it's currently open
+    setSelectedBatch((prev) =>
+      prev && prev.batchId === editingBatch.batchId
+        ? {
+            ...prev,
+            batchNumber: editForm.batchNumber.trim(),
+            expiryDate: editForm.expiryDate,
+            quantityAvailable: qty,
+            purchasePrice: cost,
+            valueAtRisk: qty * cost,
+            note: editForm.note.trim() || null,
+            daysLeft: diffDays,
+            status: newStatus,
+          }
+        : prev
+    );
+
+    triggerToast(`Batch #${editForm.batchNumber} updated successfully!`);
+    setEditingBatch(null);
+  }
 
   // Fetch batches using existing backend endpoint GET /api/batches
   const fetchBatches = useCallback(
@@ -497,7 +586,17 @@ export default function BatchesPage() {
   }, [batches, searchQuery, actionFilter, writtenOffIds, returnsByBatch]);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8 relative">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl bg-slate-900 px-4 py-3 text-white shadow-2xl transition-all animate-in fade-in slide-in-from-bottom-3">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white shrink-0">
+            <Check className="h-3.5 w-3.5 stroke-[3]" />
+          </div>
+          <span className="text-sm font-medium">{toastMessage}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -775,6 +874,17 @@ export default function BatchesPage() {
 
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEdit(b);
+                            }}
+                            title="Edit batch"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1479,6 +1589,183 @@ export default function BatchesPage() {
             </div>
           );
         })()}
+
+      {/* Edit Batch Modal Popup (Frontend) */}
+      {editingBatch && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150"
+          onClick={handleCloseEdit}
+        >
+          <div
+            className="bg-white border border-slate-200 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-[#044d73] text-white shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-white/10 text-white flex items-center justify-center border border-white/20 shrink-0">
+                  <Pencil className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Edit Batch</h3>
+                  <p className="text-xs text-sky-100/90 mt-0.5">
+                    {editingBatch.productName} · Batch #{editingBatch.batchNumber}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseEdit}
+                className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveEdit}>
+              <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                {/* Product & Supplier Context Pill */}
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-slate-400 block font-medium">Product</span>
+                    <span className="font-semibold text-slate-800">{editingBatch.productName}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-slate-400 block font-medium">Supplier</span>
+                    <span className="font-semibold text-slate-800">{editingBatch.partyName || "Direct Purchase"}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Batch Number */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Batch Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editForm.batchNumber}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, batchNumber: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                    />
+                  </div>
+
+                  {/* Expiry Date */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Expiry Date <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={editForm.expiryDate}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, expiryDate: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                    />
+                  </div>
+
+                  {/* Available Stock */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Available Stock ({editingBatch.unit}) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      required
+                      value={editForm.quantityAvailable}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, quantityAvailable: Number(e.target.value) }))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                    />
+                  </div>
+
+                  {/* Purchase Price (Cost) */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Purchase Price / Cost (Rs.) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      required
+                      value={editForm.purchasePrice}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, purchasePrice: Number(e.target.value) }))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                    />
+                  </div>
+
+                  {/* MRP */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      MRP (Rs.)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      placeholder="Optional"
+                      value={editForm.mrp}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, mrp: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                    />
+                  </div>
+
+                  {/* Selling Price */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Selling Price (Rs.)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      placeholder="Optional"
+                      value={editForm.salePrice}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, salePrice: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Batch Notes / Location
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Shelf A-3, supplier promo batch..."
+                    value={editForm.note}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, note: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-2.5 px-6 py-4 bg-slate-50 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleCloseEdit}
+                  className="rounded-lg px-4 py-2 text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-200/70 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#044d73] hover:bg-[#033b59] px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
+                >
+                  <Check className="h-4 w-4" />
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

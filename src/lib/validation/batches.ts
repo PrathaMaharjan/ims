@@ -14,3 +14,17 @@ export const batchDetailsSchema = z.object({
 });
 
 export type BatchDetailsInput = z.infer<typeof batchDetailsSchema>;
+
+// Edit of an existing batch from the batches screen. Every field optional —
+// only what's sent gets changed.
+export const updateBatchSchema = z.object({
+  batchNumber: z.string().trim().min(1).max(100).optional(),
+  expiryDate: z.string().min(1).optional(),
+  quantityAvailable: z.number().int().nonnegative().optional(),
+  purchasePrice: z.number().nonnegative().optional(),
+  mrp: z.number().nonnegative().optional(),
+  salePrice: z.number().nonnegative().nullable().optional(),
+  note: z.string().max(1000).nullable().optional(),
+});
+
+export type UpdateBatchInput = z.infer<typeof updateBatchSchema>;

@@ -1,5 +1,13 @@
 import { db } from "@/db";
-import { batches, parties, products, purchaseReturns, stockWriteOffs } from "@/db/schema";
+import {
+  batches,
+  parties,
+  products,
+  purchaseReturns,
+  stockWriteOffs,
+} from "@/db/schema";
+import { invalidateCache } from "@/lib/cache";
+import { UpdateBatchInput } from "@/lib/validation/batches";
 import { and, asc, eq, exists, gt, or, SQL, sql } from "drizzle-orm";
 
 // Batches shown on the expiry screen: anything with stock left, plus batches
@@ -234,13 +242,16 @@ export class BatchNotSellableError extends Error {
   constructor(
     message: string,
     readonly batchId: string,
-    readonly reason: "EXPIRED" | "NOT_FOUND" | "INSUFFICIENT_STOCK" | "WRONG_PRODUCT",
+    readonly reason:
+      | "EXPIRED"
+      | "NOT_FOUND"
+      | "INSUFFICIENT_STOCK"
+      | "WRONG_PRODUCT",
   ) {
     super(message);
     this.name = "BatchNotSellableError";
   }
 }
-
 
 export async function assertBatchSellable(
   organizationId: string,
@@ -257,12 +268,14 @@ export async function assertBatchSellable(
       isExpired: sql<boolean>`${batches.expiryDate} < CURRENT_DATE`,
     })
     .from(batches)
-    .where(and(eq(batches.id, batchId), eq(batches.organizationId, organizationId)));
- 
+    .where(
+      and(eq(batches.id, batchId), eq(batches.organizationId, organizationId)),
+    );
+
   if (!batch) {
     throw new BatchNotSellableError("Batch not found", batchId, "NOT_FOUND");
   }
- 
+
   // Guards against the batch belonging to a different product than the line
   // says — otherwise batch stock and product stock drift apart.
   if (batch.productId !== productId) {
@@ -272,7 +285,7 @@ export async function assertBatchSellable(
       "WRONG_PRODUCT",
     );
   }
- 
+
   if (batch.isExpired) {
     throw new BatchNotSellableError(
       `Batch ${batch.batchNumber} has expired and cannot be sold`,
@@ -280,7 +293,7 @@ export async function assertBatchSellable(
       "EXPIRED",
     );
   }
- 
+
   if (batch.quantityAvailable < quantity) {
     throw new BatchNotSellableError(
       `Batch ${batch.batchNumber} has only ${batch.quantityAvailable} left`,
@@ -289,7 +302,6 @@ export async function assertBatchSellable(
     );
   }
 }
- 
 
 // expire summary
 export interface ExpirySummary {
@@ -314,10 +326,7 @@ export async function getExpirySummary(
     })
     .from(batches)
     .where(
-      and(
-        eq(batches.organizationId, organizationId),
-        visibleOnExpiryScreen(),
-      ),
+      and(eq(batches.organizationId, organizationId), visibleOnExpiryScreen()),
     );
   return {
     expired: {
@@ -330,4 +339,121 @@ export async function getExpirySummary(
     },
     withinDays,
   };
+}
+
+// update
+export class BatchUpdateError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "BatchUpdateError";
+  }
+}
+
+export async function updateBatch(
+  organizationId: string,
+  batchId: string,
+  input: UpdateBatchInput,
+) {
+  // Scoped by org so one tenant can't edit another tenant's batch via a guessed id.
+  const existing = await db.query.batches.findFirst({
+    where: and(
+      eq(batches.id, batchId),
+      eq(batches.organizationId, organizationId),
+    ),
+    columns: {
+      id: true,
+      productId: true,
+      quantityReceived: true,
+      quantityAvailable: true,
+      manufacturingDate: true,
+      expiryDate: true,
+    },
+  });
+  if (!existing) {
+    throw new BatchUpdateError("Batch not found", 404);
+  }
+
+  // Available can't exceed received — purchase edits derive "sold so far"
+  // as received - available, which would go negative otherwise.
+  if (
+    input.quantityAvailable !== undefined &&
+    input.quantityAvailable > existing.quantityReceived
+  ) {
+    throw new BatchUpdateError(
+      `Available stock cannot exceed quantity received (${existing.quantityReceived})`,
+      400,
+    );
+  }
+  const mfg =
+    input.manufacturingDate !== undefined
+      ? input.manufacturingDate
+      : existing.manufacturingDate;
+  const exp = input.expiryDate ?? existing.expiryDate;
+  if (mfg && exp && mfg > exp) {
+    throw new BatchUpdateError(
+      "Expiry date must be after manufacturing date",
+      400,
+    );
+  }
+
+  const updates: Partial<typeof batches.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+  if (input.batchNumber !== undefined) updates.batchNumber = input.batchNumber;
+  if (input.expiryDate !== undefined) updates.expiryDate = input.expiryDate;
+  if (input.manufacturingDate !== undefined)
+    updates.manufacturingDate = input.manufacturingDate;
+  if (input.quantityAvailable !== undefined)
+    updates.quantityAvailable = input.quantityAvailable;
+  if (input.purchasePrice !== undefined)
+    updates.purchasePrice = input.purchasePrice.toFixed(2);
+  if (input.mrp !== undefined) updates.mrp = input.mrp.toFixed(2);
+  if (input.salePrice !== undefined)
+    updates.salePrice =
+      input.salePrice === null ? null : input.salePrice.toFixed(2);
+  if (input.note !== undefined) updates.note = input.note;
+
+  const delta =
+    input.quantityAvailable !== undefined
+      ? input.quantityAvailable - existing.quantityAvailable
+      : 0;
+
+  const updateBatchQuery = db
+    .update(batches)
+    .set(updates)
+    .where(
+      and(eq(batches.id, batchId), eq(batches.organizationId, organizationId)),
+    )
+    .returning();
+
+  // Batch row and product stock move together — neon-http has no
+  // interactive transactions, so db.batch keeps them atomic.
+  let updated;
+  if (delta !== 0) {
+    [[updated]] = await db.batch([
+      updateBatchQuery,
+      db
+        .update(products)
+        .set({ stockQuantity: sql`${products.stockQuantity} + ${delta}` })
+        .where(
+          and(
+            eq(products.id, existing.productId),
+            eq(products.organizationId, organizationId),
+          ),
+        ),
+    ]);
+  } else {
+    [updated] = await updateBatchQuery;
+  }
+
+  // Product list/detail are cached with batch-derived stock totals.
+  await Promise.all([
+    invalidateCache(`products:list:${organizationId}`),
+    invalidateCache(`products:one:${organizationId}:${existing.productId}`),
+  ]);
+
+  return updated;
 }

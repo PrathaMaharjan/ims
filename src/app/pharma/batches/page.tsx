@@ -263,6 +263,7 @@ export default function BatchesPage() {
   }
 
   function handleOpenEdit(batch: BatchItem) {
+    setActionError("");
     setEditingBatch(batch);
     setEditForm({
       batchNumber: batch.batchNumber,
@@ -279,56 +280,49 @@ export default function BatchesPage() {
     setEditingBatch(null);
   }
 
-  function handleSaveEdit(e: React.FormEvent) {
+  // PATCH /api/batches/:batchId
+  async function handleSaveEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editingBatch) return;
 
-    const expDate = new Date(editForm.expiryDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    expDate.setHours(0, 0, 0, 0);
-    const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const newStatus: ExpiryStatus = diffDays <= 0 ? "EXPIRED" : diffDays <= withinDays ? "NEAR_EXPIRY" : "ACTIVE";
     const qty = Math.max(0, Number(editForm.quantityAvailable) || 0);
     const cost = Math.max(0, Number(editForm.purchasePrice) || 0);
+    const body: Record<string, unknown> = {
+      batchNumber: editForm.batchNumber.trim(),
+      expiryDate: editForm.expiryDate,
+      quantityAvailable: qty,
+      purchasePrice: cost,
+      note: editForm.note.trim() || null,
+    };
+    // MRP / sale price aren't in the list row, so only send them when filled in
+    if (editForm.mrp !== "") body.mrp = Number(editForm.mrp);
+    if (editForm.salePrice !== "") body.salePrice = Number(editForm.salePrice);
 
-    setBatches((prev) =>
-      prev.map((b) =>
-        b.batchId === editingBatch.batchId
+    setSaving(true);
+    setActionError("");
+    try {
+      await api.patch(`/api/batches/${editingBatch.batchId}`, body);
+      triggerToast(`Batch #${body.batchNumber} updated successfully!`);
+      setEditingBatch(null);
+      setSelectedBatch((prev) =>
+        prev && prev.batchId === editingBatch.batchId
           ? {
-              ...b,
+              ...prev,
               batchNumber: editForm.batchNumber.trim(),
               expiryDate: editForm.expiryDate,
               quantityAvailable: qty,
               purchasePrice: cost,
               valueAtRisk: qty * cost,
               note: editForm.note.trim() || null,
-              daysLeft: diffDays,
-              status: newStatus,
             }
-          : b
-      )
-    );
-
-    // Also update selectedBatch if it's currently open
-    setSelectedBatch((prev) =>
-      prev && prev.batchId === editingBatch.batchId
-        ? {
-            ...prev,
-            batchNumber: editForm.batchNumber.trim(),
-            expiryDate: editForm.expiryDate,
-            quantityAvailable: qty,
-            purchasePrice: cost,
-            valueAtRisk: qty * cost,
-            note: editForm.note.trim() || null,
-            daysLeft: diffDays,
-            status: newStatus,
-          }
-        : prev
-    );
-
-    triggerToast(`Batch #${editForm.batchNumber} updated successfully!`);
-    setEditingBatch(null);
+          : prev
+      );
+      refreshAll();
+    } catch (err) {
+      setActionError(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Fetch batches using existing backend endpoint GET /api/batches
@@ -1754,12 +1748,16 @@ export default function BatchesPage() {
                 >
                   Cancel
                 </button>
+                {actionError && (
+                  <span className="mr-auto text-xs text-rose-600">{actionError}</span>
+                )}
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#044d73] hover:bg-[#033b59] px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#044d73] hover:bg-[#033b59] px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98] disabled:opacity-60"
                 >
                   <Check className="h-4 w-4" />
-                  Save Changes
+                  {saving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>

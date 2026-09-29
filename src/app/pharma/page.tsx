@@ -34,6 +34,7 @@ import {
 } from "recharts";
 import { api } from "@/lib/api-client";
 import { CriticalStockReportModal } from "./_components/CriticalStockReportModal";
+import { AnimatedStatValue } from "./_components/ui/animated-stat-value";
 
 type ViewMode = "monthly" | "yearly";
 
@@ -311,7 +312,7 @@ export default function DashboardPage() {
                 <div className="rounded-xl border-l-4 border-l-[#044d73] border border-slate-200 bg-white p-5 shadow-sm flex items-center justify-between">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Sales</p>
-                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1">{formatMoney(stats?.totalSales ?? 0)}</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1"><AnimatedStatValue value={Math.round(stats?.totalSales ?? 0)} format={formatMoney} /></p>
                     </div>
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#044d73]/10 text-[#044d73]">
                         <DollarSign className="h-6 w-6" />
@@ -321,7 +322,7 @@ export default function DashboardPage() {
                 <div className="rounded-xl border-l-4 border-l-emerald-500 border border-slate-200 bg-white p-5 shadow-sm flex items-center justify-between">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Net Profit</p>
-                        <p className="text-2xl sm:text-3xl font-bold text-emerald-600 mt-1">{formatMoney(stats?.netProfit ?? 0)}</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-emerald-600 mt-1"><AnimatedStatValue value={Math.round(stats?.netProfit ?? 0)} format={formatMoney} /></p>
                         <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-500 font-medium">
                             <span className="font-bold text-emerald-700">{(stats?.profitMargin ?? 0).toFixed(1)}%</span>
                             <span className="text-slate-400">profit margin</span>
@@ -335,7 +336,7 @@ export default function DashboardPage() {
                 <div className="rounded-xl border-l-4 border-l-rose-500 border border-slate-200 bg-white p-5 shadow-sm flex items-center justify-between">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Purchases & Outflow</p>
-                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1">{formatMoney(totalOutflow)}</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1"><AnimatedStatValue value={Math.round(totalOutflow)} format={formatMoney} /></p>
                         <p className="text-[11px] text-slate-400 mt-1">
                             Pur: {formatMoney(stats?.purchases ?? 0)} · Exp: {formatMoney(stats?.outflow ?? 0)}
                         </p>
@@ -349,7 +350,7 @@ export default function DashboardPage() {
                 <div className="rounded-xl border-l-4 border-l-amber-500 border border-slate-200 bg-white p-5 shadow-sm flex items-center justify-between">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Inventory Status</p>
-                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1">{inventoryStatus?.totalItems ?? 0} Items</p>
+                        <p className="text-2xl sm:text-3xl font-bold text-slate-800 mt-1"><AnimatedStatValue value={inventoryStatus?.totalItems ?? 0} format={(n) => `${n} Items`} /></p>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
                                 {inventoryStatus?.lowStockCount ?? 0} Low Stock

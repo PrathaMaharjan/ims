@@ -6,7 +6,6 @@ import {
   Layers,
   Search,
   AlertTriangle,
-  AlertCircle,
   CheckCircle2,
   Clock,
   RefreshCw,
@@ -14,12 +13,13 @@ import {
   ChevronRight,
   ShieldAlert,
   Boxes,
-  ShoppingCart,
   X,
   Building2,
   Package,
   Eye,
   FileText,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
@@ -46,13 +46,18 @@ export interface BatchItem {
   note?: string | null;
 }
 
-export interface BatchExtraDetails {
-  note: string | null;
+// One row of GET /api/batches/[productId] — used both for the note/details
+// block and for the replacement-batch dropdown when a return is completed.
+export interface ProductBatch {
+  id: string;
+  batchNumber: string;
+  expiryDate: string;
+  quantityAvailable: number;
+  note?: string | null;
   manufacturingDate?: string | null;
   mrp?: string | number | null;
   salePrice?: string | number | null;
   quantityReceived?: number;
-  quantityAvailable?: number;
 }
 
 export interface ExpirySummary {
@@ -68,7 +73,31 @@ export interface Pagination {
   totalPages: number;
 }
 
+interface PurchaseReturn {
+  id: string;
+  batchId: string;
+  productId: string;
+  quantity: number;
+  reason: string | null;
+  status: "PENDING" | "COMPLETED";
+  returnDate: string;
+  batchNumber: string;
+  productName: string;
+  partyName: string | null;
+  resolutionType: "MONEY" | "QUANTITY" | null;
+  resolutionAmount: string | null;
+}
+
+interface WriteOff {
+  id: string;
+  batchId: string;
+  quantity: number;
+  totalLoss: string;
+  createdAt: string;
+}
+
 type StatusFilterOption = "all" | "expired" | "near" | "ok";
+type ActionPanel = "none" | "return" | "writeoff";
 
 const PAGE_LIMIT = 10;
 
@@ -81,6 +110,15 @@ const rs = (amount: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+
+// Pulls a readable message out of an axios error (string or zod-flatten object)
+function errMsg(err: unknown): string {
+  const data = (err as { response?: { data?: { error?: unknown } } })?.response?.data;
+  const e = data?.error;
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object") return "Please check the values you entered.";
+  return "Something went wrong. Please try again.";
+}
 
 const STATUS_STYLE: Record<
   ExpiryStatus,
@@ -141,8 +179,20 @@ function formatExpiryCountdown(
   };
 }
 
+// "YYYY-MM-DD" for tomorrow in local time — earliest valid replacement expiry
+function tomorrow(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 const selectCls =
   "rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none";
+
+const inputCls =
+  "mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#044d73] focus:outline-none";
 
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
@@ -164,11 +214,29 @@ export default function BatchesPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedBatch, setSelectedBatch] = useState<BatchItem | null>(null);
 
-  // Batch notes and extended details cache fetched via GET /api/batches/[productId]
-  const [batchDetailsCache, setBatchDetailsCache] = useState<
-    Record<string, BatchExtraDetails>
-  >({});
+  // All batches of a product, keyed by productId. Fetched from
+  // GET /api/batches/[productId] when the modal opens — gives us both the
+  // batch note/details and the list of batches a replacement can go into.
+  const [productBatches, setProductBatches] = useState<Record<string, ProductBatch[]>>({});
   const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
+
+  // Purchase returns (all statuses) and write-offs, for the status column
+  const [allReturns, setAllReturns] = useState<PurchaseReturn[]>([]);
+  const [writeOffs, setWriteOffs] = useState<WriteOff[]>([]);
+
+  // Modal action state
+  const [panel, setPanel] = useState<ActionPanel>("none");
+  const [returnQty, setReturnQty] = useState("");
+  const [returnReason, setReturnReason] = useState("");
+
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [resolution, setResolution] = useState<"MONEY" | "QUANTITY">("MONEY");
+  const [amount, setAmount] = useState("");
+  // Expiry date of the replacement stock the supplier sent back
+  const [newExpiry, setNewExpiry] = useState("");
+
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   // Fetch batches using existing backend endpoint GET /api/batches
   const fetchBatches = useCallback(
@@ -189,7 +257,13 @@ export default function BatchesPage() {
         });
 
         if (res.data) {
-          setBatches(res.data.batches || []);
+          const rows: BatchItem[] = res.data.batches || [];
+          setBatches(rows);
+          // Keep an open modal in sync with the reloaded row (fresh stock
+          // after a return / completion), so the modal can stay open.
+          setSelectedBatch((prev) =>
+            prev ? (rows.find((b) => b.batchId === prev.batchId) ?? prev) : prev,
+          );
           if (res.data.summary) {
             setSummary(res.data.summary);
           }
@@ -228,7 +302,118 @@ export default function BatchesPage() {
     } catch (err) {
       console.error("Failed to load batch stats:", err);
     }
-  }, [withinDays]);
+  }, []);
+
+  // GET /api/purchase-returns (all statuses) and GET /api/write-offs
+  const loadReturnsAndWriteOffs = useCallback(async () => {
+    const [ret, wo] = await Promise.allSettled([
+      api.get("/api/purchases/returns", { params: { limit: 100 } }),
+      api.get("/api/purchases/writeoff"),
+    ]);
+    if (ret.status === "fulfilled") setAllReturns(ret.value.data?.items ?? []);
+    else console.error("Failed to load returns:", ret.reason);
+    if (wo.status === "fulfilled") setWriteOffs(wo.value.data?.writeOffs ?? []);
+    else console.error("Failed to load write-offs:", wo.reason);
+  }, []);
+
+  // Quick lookups for the table column
+  const writtenOffIds = useMemo(
+    () => new Set(writeOffs.map((w) => w.batchId)),
+    [writeOffs],
+  );
+  const returnsByBatch = useMemo(() => {
+    const map: Record<string, PurchaseReturn[]> = {};
+    for (const r of allReturns) {
+      (map[r.batchId] ||= []).push(r);
+    }
+    return map;
+  }, [allReturns]);
+
+  // After any action: reload the table, returns/write-offs, and drop the
+  // cached product batches so quantities in the modal are fresh.
+  const refreshAll = useCallback(() => {
+    fetchBatches(pagination.page);
+    loadStaticStats(withinDays);
+    loadReturnsAndWriteOffs();
+    setProductBatches({});
+  }, [fetchBatches, loadStaticStats, loadReturnsAndWriteOffs, pagination.page, withinDays]);
+
+  function closeModal() {
+    setSelectedBatch(null);
+    setPanel("none");
+    setCompletingId(null);
+    setActionError("");
+  }
+
+  // POST /api/purchase-returns
+  async function submitReturn() {
+    if (!selectedBatch) return;
+    setSaving(true);
+    setActionError("");
+    try {
+      await api.post("/api/purchases/returns", {
+        batchId: selectedBatch.batchId,
+        quantity: Number(returnQty),
+        reason: returnReason.trim() || undefined,
+      });
+      setReturnQty("");
+      setReturnReason("");
+      setPanel("none");
+      // Stay on the modal so the new "Pending" return shows up right here
+      refreshAll();
+    } catch (err) {
+      setActionError(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // POST /api/write-offs — writes off the whole remaining stock of the batch
+  async function submitWriteOff() {
+    if (!selectedBatch) return;
+    setSaving(true);
+    setActionError("");
+    try {
+      await api.post("/api/purchases/writeoff", { batchId: selectedBatch.batchId });
+      setPanel("none");
+      // Stay on the modal so the "Written off" state shows right here
+      refreshAll();
+    } catch (err) {
+      setActionError(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // PATCH /api/purchase-returns/:id — done by hand once the supplier settles
+  async function submitComplete() {
+    if (!completingId) return;
+    setSaving(true);
+    setActionError("");
+    try {
+      // Empty amount → refund at cost (returned qty × purchase price);
+      // the API requires a positive amount.
+      const ret = allReturns.find((r) => r.id === completingId);
+      if (!ret) return;
+      const defaultAmount = ret.quantity * (selectedBatch?.purchasePrice ?? 0);
+      // Replacement stock always goes back into the same batch it was
+      // returned from, with the new expiry date from the supplier.
+      const body =
+        resolution === "MONEY"
+          ? { resolutionType: "MONEY", resolutionAmount: amount ? Number(amount) : defaultAmount }
+          : { resolutionType: "QUANTITY", resolvedBatchId: ret.batchId, expiryDate: newExpiry };
+      await api.patch(`/api/purchases/returns/${completingId}`, body);
+      setCompletingId(null);
+      setAmount("");
+      setNewExpiry("");
+      // Stay on the modal so the return flips to "Completed" right here
+      refreshAll();
+    } catch (err) {
+      setActionError(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   useEffect(() => {
     loadStaticStats(withinDays);
@@ -238,44 +423,24 @@ export default function BatchesPage() {
     fetchBatches(1, statusFilter, withinDays);
   }, [statusFilter, withinDays, fetchBatches]);
 
-  // When a batch is selected, fetch product batches from /api/batches/[productId]
-  // which uses batchColumns (including note: true, manufacturingDate, mrp, salePrice, etc.)
+  useEffect(() => {
+    loadReturnsAndWriteOffs();
+  }, [loadReturnsAndWriteOffs]);
+
+  // When a batch is selected, pull every batch of that product once
   useEffect(() => {
     if (!selectedBatch) return;
-    const batchId = selectedBatch.batchId;
-    if (batchDetailsCache[batchId]) return;
+    const productId = selectedBatch.productId;
+    if (productBatches[productId]) return;
 
     let isMounted = true;
     setLoadingDetails(true);
 
     api
-      .get(`/api/batches/${selectedBatch.productId}`)
+      .get(`/api/batches/${productId}`)
       .then((res) => {
-        if (!isMounted || !res.data?.batches) return;
-        const allBatches = res.data.batches;
-        const found = allBatches.find(
-          (x: { id?: string; batchNumber?: string }) =>
-            x.id === batchId || x.batchNumber === selectedBatch.batchNumber,
-        );
-
-        if (found) {
-          setBatchDetailsCache((prev) => ({
-            ...prev,
-            [batchId]: {
-              note: found.note ?? null,
-              manufacturingDate: found.manufacturingDate ?? null,
-              mrp: found.mrp ?? null,
-              salePrice: found.salePrice ?? null,
-              quantityReceived: found.quantityReceived ?? null,
-              quantityAvailable: found.quantityAvailable ?? null,
-            },
-          }));
-        } else {
-          setBatchDetailsCache((prev) => ({
-            ...prev,
-            [batchId]: { note: null },
-          }));
-        }
+        if (!isMounted) return;
+        setProductBatches((prev) => ({ ...prev, [productId]: res.data?.batches ?? [] }));
       })
       .catch((err) => {
         console.error("Failed to fetch batch note/details:", err);
@@ -287,7 +452,7 @@ export default function BatchesPage() {
     return () => {
       isMounted = false;
     };
-  }, [selectedBatch, batchDetailsCache]);
+  }, [selectedBatch, productBatches]);
 
   // Client-side text filter for batch number, product name, or supplier
   const filteredBatches = useMemo(() => {
@@ -312,10 +477,7 @@ export default function BatchesPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              fetchBatches(pagination.page);
-              loadStaticStats(withinDays);
-            }}
+            onClick={refreshAll}
             disabled={loading}
             className="flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
           >
@@ -462,6 +624,7 @@ export default function BatchesPage() {
                 <th className="py-3 px-4">Purchase Price</th>
                 <th className="py-3 px-4">Value at Risk</th>
                 <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4">Return / Write-off</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -469,7 +632,7 @@ export default function BatchesPage() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="py-16 text-center text-sm text-slate-400"
                   >
                     Loading batches...
@@ -478,7 +641,7 @@ export default function BatchesPage() {
               ) : filteredBatches.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="py-16 text-center text-sm text-slate-400"
                   >
                     {searchQuery
@@ -490,6 +653,12 @@ export default function BatchesPage() {
                 filteredBatches.map((b) => {
                   const countdown = formatExpiryCountdown(b.daysLeft, b.status);
                   const st = STATUS_STYLE[b.status];
+
+                  const isWrittenOff = writtenOffIds.has(b.batchId);
+                  const batchReturns = returnsByBatch[b.batchId] ?? [];
+                  const pendingCount = batchReturns.filter((r) => r.status === "PENDING").length;
+                  const completed = batchReturns.filter((r) => r.status === "COMPLETED");
+
                   return (
                     <tr
                       key={b.batchId}
@@ -567,6 +736,39 @@ export default function BatchesPage() {
                           {st.label}
                         </span>
                       </td>
+
+                      {/* Return / write-off status */}
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col gap-1 items-start">
+                          {isWrittenOff && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-800 px-2.5 py-1 text-xs font-semibold text-white">
+                              <Trash2 className="w-3 h-3" />
+                              Written Off
+                            </span>
+                          )}
+                          {pendingCount > 0 && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              Return Pending{pendingCount > 1 ? ` (${pendingCount})` : ""}
+                            </span>
+                          )}
+                          {completed.map((r) => (
+                            <span
+                              key={r.id}
+                              className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              {r.resolutionType === "MONEY"
+                                ? `Money Returned · ${rs(Number(r.resolutionAmount ?? 0))}`
+                                : "Stock Replaced"}
+                            </span>
+                          ))}
+                          {!isWrittenOff && batchReturns.length === 0 && (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </div>
+                      </td>
+
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-end gap-1">
                           <button
@@ -575,7 +777,7 @@ export default function BatchesPage() {
                               e.stopPropagation();
                               setSelectedBatch(b);
                             }}
-                            title="View Details & Note"
+                            title="Open actions"
                             className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
                           >
                             <Eye className="w-4 h-4" />
@@ -629,16 +831,21 @@ export default function BatchesPage() {
         )}
       </div>
 
-      {/* Batch Details Modal with Notes Section */}
+      {/* Batch Action Modal — details, note, returns and write-off */}
       {selectedBatch &&
         (() => {
           const st = STATUS_STYLE[selectedBatch.status];
-          const extra = batchDetailsCache[selectedBatch.batchId];
+          const siblings = productBatches[selectedBatch.productId] ?? [];
+          const extra = siblings.find(
+            (x) => x.id === selectedBatch.batchId || x.batchNumber === selectedBatch.batchNumber,
+          );
+          const batchReturns = returnsByBatch[selectedBatch.batchId] ?? [];
+          const batchWriteOff = writeOffs.find((w) => w.batchId === selectedBatch.batchId);
 
           return (
             <div
               className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
-              onClick={() => setSelectedBatch(null)}
+              onClick={closeModal}
             >
               <div
                 className="bg-white border border-slate-200 w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
@@ -675,7 +882,7 @@ export default function BatchesPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setSelectedBatch(null)}
+                    onClick={closeModal}
                     className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
                   >
                     <X className="w-5 h-5" />
@@ -731,6 +938,281 @@ export default function BatchesPage() {
                       </span>
                     </div>
                   </div>
+
+                  {/* Already written off */}
+                  {batchWriteOff && (
+                    <div className="flex items-start gap-2.5 rounded-xl bg-slate-100 p-3.5 text-slate-700 border border-slate-300">
+                      <Trash2 className="h-4 w-4 mt-0.5 shrink-0 text-slate-600" />
+                      <div className="text-xs">
+                        <strong className="font-semibold block text-sm">
+                          Written off
+                        </strong>
+                        {batchWriteOff.quantity} {selectedBatch.unit} removed ·
+                        loss {rs(Number(batchWriteOff.totalLoss))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* -------------------------------------------------- */}
+                  {/* Purchase returns on this batch                      */}
+                  {/* -------------------------------------------------- */}
+                  {batchReturns.length > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <RotateCcw className="w-4 h-4 text-[#044d73]" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Returns on this batch
+                        </span>
+                      </div>
+
+                      {batchReturns.map((r) => (
+                        <div
+                          key={r.id}
+                          className={`rounded-lg border p-3 space-y-3 ${
+                            r.status === "PENDING"
+                              ? "border-amber-200 bg-amber-50/50"
+                              : "border-emerald-200 bg-emerald-50/40"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div className="text-xs text-slate-600">
+                              <span className="font-bold text-slate-800">
+                                {r.quantity} {selectedBatch.unit}
+                              </span>{" "}
+                              sent back on {r.returnDate}
+                              {r.reason ? ` · ${r.reason}` : ""}
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                Supplier: {r.partyName ?? "—"}
+                                {r.status === "COMPLETED" &&
+                                  ` · ${
+                                    r.resolutionType === "MONEY"
+                                      ? `money returned ${rs(Number(r.resolutionAmount ?? 0))}`
+                                      : "stock replaced"
+                                  }`}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {r.status === "PENDING" ? (
+                                <>
+                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                    Pending
+                                  </span>
+                                  {completingId !== r.id && (
+                                    <button
+                                      onClick={() => {
+                                        setPanel("none");
+                                        setCompletingId(r.id);
+                                        setResolution("MONEY");
+                                        setAmount("");
+                                        setNewExpiry("");
+                                        setActionError("");
+                                      }}
+                                      className="rounded-lg bg-[#044d73] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#033a57]"
+                                    >
+                                      Mark Completed
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  {r.resolutionType === "MONEY" ? "Money Returned" : "Stock Replaced"}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Manual completion — ask what the supplier gave back */}
+                          {completingId === r.id && (
+                            <div className="space-y-3 border-t border-amber-100 pt-3">
+                              <p className="text-xs font-medium text-slate-600">
+                                What did the supplier give back?
+                              </p>
+                              <div className="flex gap-2">
+                                {(["MONEY", "QUANTITY"] as const).map((t) => (
+                                  <button
+                                    key={t}
+                                    onClick={() => setResolution(t)}
+                                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${
+                                      resolution === t
+                                        ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]"
+                                        : "border-slate-200 bg-white text-slate-600"
+                                    }`}
+                                  >
+                                    {t === "MONEY" ? "Money" : "Replacement stock"}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {resolution === "MONEY" ? (
+                                <div>
+                                  <label className="text-xs font-medium text-slate-500">
+                                    Amount (leave empty to use quantity × purchase price)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    className={inputCls}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  <p className="text-xs text-slate-600">
+                                    <strong>
+                                      {r.quantity} {selectedBatch.unit}
+                                    </strong>{" "}
+                                    will be added back to batch{" "}
+                                    <strong>#{selectedBatch.batchNumber}</strong>.
+                                  </p>
+                                  <div>
+                                    <label className="text-xs font-medium text-slate-500">
+                                      New expiry date of the replacement stock
+                                    </label>
+                                    <input
+                                      type="date"
+                                      min={tomorrow()}
+                                      value={newExpiry}
+                                      onChange={(e) => setNewExpiry(e.target.value)}
+                                      className={inputCls}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {actionError && (
+                                <p className="text-xs text-red-600">{actionError}</p>
+                              )}
+
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => {
+                                    setCompletingId(null);
+                                    setActionError("");
+                                  }}
+                                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={submitComplete}
+                                  disabled={
+                                    saving ||
+                                    (resolution === "QUANTITY" &&
+                                      (!newExpiry || newExpiry < tomorrow()))
+                                  }
+                                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                                >
+                                  {saving ? "Saving..." : "Complete return"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* -------------------------------------------------- */}
+                  {/* Return form                                         */}
+                  {/* -------------------------------------------------- */}
+                  {panel === "return" && (
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Return to supplier
+                      </span>
+                      <p className="text-xs text-slate-500">
+                        The stock leaves the shelf now and the return stays{" "}
+                        <strong>Pending</strong> until you mark it completed by hand.
+                      </p>
+                      <div>
+                        <label className="text-xs font-medium text-slate-500">
+                          Quantity (max {selectedBatch.quantityAvailable})
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={selectedBatch.quantityAvailable}
+                          value={returnQty}
+                          onChange={(e) => setReturnQty(e.target.value)}
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-500">
+                          Reason (optional)
+                        </label>
+                        <input
+                          value={returnReason}
+                          onChange={(e) => setReturnReason(e.target.value)}
+                          className={inputCls}
+                        />
+                      </div>
+                      {actionError && <p className="text-xs text-red-600">{actionError}</p>}
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            setPanel("none");
+                            setActionError("");
+                          }}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={submitReturn}
+                          disabled={
+                            saving ||
+                            !Number(returnQty) ||
+                            Number(returnQty) > selectedBatch.quantityAvailable
+                          }
+                          className="rounded-lg bg-[#044d73] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                        >
+                          {saving ? "Saving..." : "Create return"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* -------------------------------------------------- */}
+                  {/* Write-off confirm                                   */}
+                  {/* -------------------------------------------------- */}
+                  {panel === "writeoff" && (
+                    <div className="rounded-xl border border-red-200 bg-red-50/60 p-4 space-y-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-red-800">
+                        Write off expired stock
+                      </span>
+                      <p className="text-xs text-red-900">
+                        All{" "}
+                        <strong>
+                          {selectedBatch.quantityAvailable} {selectedBatch.unit}
+                        </strong>{" "}
+                        left on this batch will be removed from stock and booked as a loss of{" "}
+                        <strong>{rs(selectedBatch.valueAtRisk)}</strong>. This cannot be undone.
+                      </p>
+                      {actionError && <p className="text-xs text-red-600">{actionError}</p>}
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            setPanel("none");
+                            setActionError("");
+                          }}
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={submitWriteOff}
+                          disabled={saving}
+                          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                        >
+                          {saving ? "Writing off..." : "Write off everything"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Batch Note Section */}
                   {(() => {
@@ -827,7 +1309,6 @@ export default function BatchesPage() {
                         <strong className="font-semibold block text-sm">
                           Batch is Expired
                         </strong>
-
                       </div>
                     </div>
                   )}
@@ -839,13 +1320,50 @@ export default function BatchesPage() {
                         <strong className="font-semibold block text-sm">
                           Expiring Soon
                         </strong>
-
                       </div>
                     </div>
                   )}
                 </div>
 
+                {/* Footer actions */}
+                <div className="shrink-0 flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4">
+                  {selectedBatch.quantityAvailable > 0 && (
+                    <button
+                      onClick={() => {
+                        setActionError("");
+                        setCompletingId(null);
+                        setReturnQty(String(selectedBatch.quantityAvailable));
+                        setPanel(panel === "return" ? "none" : "return");
+                      }}
+                      className="flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-50"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Return to Supplier
+                    </button>
+                  )}
 
+                  {selectedBatch.status === "EXPIRED" &&
+                    selectedBatch.quantityAvailable > 0 && (
+                      <button
+                        onClick={() => {
+                          setActionError("");
+                          setCompletingId(null);
+                          setPanel(panel === "writeoff" ? "none" : "writeoff");
+                        }}
+                        className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Write Off
+                      </button>
+                    )}
+
+                  <button
+                    onClick={closeModal}
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           );

@@ -1,6 +1,27 @@
 import { db } from "@/db";
-import { batches, parties, products } from "@/db/schema";
-import { and, asc, eq, gt, SQL, sql } from "drizzle-orm";
+import { batches, parties, products, purchaseReturns, stockWriteOffs } from "@/db/schema";
+import { and, asc, eq, exists, gt, or, SQL, sql } from "drizzle-orm";
+
+// Batches shown on the expiry screen: anything with stock left, plus batches
+// emptied by a purchase return or a write-off — so their Pending / Completed /
+// Written Off status stays visible instead of the row vanishing at 0 stock.
+function visibleOnExpiryScreen(): SQL | undefined {
+  return or(
+    gt(batches.quantityAvailable, 0),
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(purchaseReturns)
+        .where(eq(purchaseReturns.batchId, batches.id)),
+    ),
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(stockWriteOffs)
+        .where(eq(stockWriteOffs.batchId, batches.id)),
+    ),
+  );
+}
 
 const batchColumns = {
   id: true,
@@ -157,7 +178,7 @@ export async function getExpiringBatches(
 ): Promise<ExpiryBatchesResult> {
   const where = and(
     eq(batches.organizationId, organizationId),
-    gt(batches.quantityAvailable, 0),
+    visibleOnExpiryScreen(),
     statusFilter(status, withinDays),
   );
   const [rows, countRows] = await Promise.all([
@@ -213,34 +234,45 @@ export class BatchNotSellableError extends Error {
   constructor(
     message: string,
     readonly batchId: string,
-    readonly reason: "EXPIRED" | "NOT_FOUND" | "INSUFFICIENT_STOCK",
+    readonly reason: "EXPIRED" | "NOT_FOUND" | "INSUFFICIENT_STOCK" | "WRONG_PRODUCT",
   ) {
     super(message);
     this.name = "BatchNotSellableError";
   }
 }
 
+
 export async function assertBatchSellable(
-  tx: typeof db,
   organizationId: string,
+  productId: string,
   batchId: string,
   quantity: number,
 ): Promise<void> {
-  const [batch] = await tx
+  const [batch] = await db
     .select({
       id: batches.id,
+      productId: batches.productId,
       batchNumber: batches.batchNumber,
       quantityAvailable: batches.quantityAvailable,
       isExpired: sql<boolean>`${batches.expiryDate} < CURRENT_DATE`,
     })
     .from(batches)
-    .where(
-      and(eq(batches.id, batchId), eq(batches.organizationId, organizationId)),
-    );
-
+    .where(and(eq(batches.id, batchId), eq(batches.organizationId, organizationId)));
+ 
   if (!batch) {
     throw new BatchNotSellableError("Batch not found", batchId, "NOT_FOUND");
   }
+ 
+  // Guards against the batch belonging to a different product than the line
+  // says — otherwise batch stock and product stock drift apart.
+  if (batch.productId !== productId) {
+    throw new BatchNotSellableError(
+      `Batch ${batch.batchNumber} does not belong to the selected product`,
+      batchId,
+      "WRONG_PRODUCT",
+    );
+  }
+ 
   if (batch.isExpired) {
     throw new BatchNotSellableError(
       `Batch ${batch.batchNumber} has expired and cannot be sold`,
@@ -248,6 +280,7 @@ export async function assertBatchSellable(
       "EXPIRED",
     );
   }
+ 
   if (batch.quantityAvailable < quantity) {
     throw new BatchNotSellableError(
       `Batch ${batch.batchNumber} has only ${batch.quantityAvailable} left`,
@@ -256,6 +289,7 @@ export async function assertBatchSellable(
     );
   }
 }
+ 
 
 // expire summary
 export interface ExpirySummary {
@@ -282,7 +316,7 @@ export async function getExpirySummary(
     .where(
       and(
         eq(batches.organizationId, organizationId),
-        gt(batches.quantityAvailable, 0),
+        visibleOnExpiryScreen(),
       ),
     );
   return {

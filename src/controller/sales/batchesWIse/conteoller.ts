@@ -4,6 +4,132 @@ import { db } from "@/db";
 import { batches, organizations, products, saleItems, sales } from "@/db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { invalidateCache } from "@/lib/cache";
+import { assertBatchSellable } from "@/controller/batches/controller";
+
+// export async function createSale(
+//   organizationId: string,
+//   userId: string,
+//   input: CreateSaleInput
+// ) {
+//   const totals = calculateSaleTotals(input);
+
+//   // 1. Validate every line's manually-selected batch has enough stock —
+//   // before writing anything. No FEFO fallback, no auto-picking; if the
+//   // chosen batch can't cover the quantity, the whole sale is rejected.
+//   for (const item of input.items) {
+//     await validateBatchSelection(organizationId, item.productId, item.batchId, item.quantity);
+//   }
+
+//   // 2. Reserve and atomically increment the organization's invoice number.
+//   const [org] = await db
+//     .update(organizations)
+//     .set({ nextInvoiceNumber: sql`${organizations.nextInvoiceNumber} + 1` })
+//     .where(eq(organizations.id, organizationId))
+//     .returning({ invoiceNumber: organizations.nextInvoiceNumber });
+
+//   if (!org) {
+//     throw new Error("Failed to reserve invoice number");
+//   }
+
+//   // The returned value is already incremented — this sale uses the number
+//   // from before the increment.
+//   const invoiceNumber = org.invoiceNumber - 1;
+
+//   // 3. Create the sale header.
+//   const [sale] = await db
+//     .insert(sales)
+//     .values({
+//       organizationId,
+//       invoiceNumber,
+//       partyId: input.partyId,
+//       saleDate: input.saleDate ? new Date(input.saleDate) : new Date(),
+//       paymentType: input.paymentType,
+//       roundingDirection: input.roundingDirection,
+//       subtotal: totals.subtotal.toFixed(2),
+//       discount: (input.discount ?? 0).toFixed(2),
+//       freightCharges: (input.freightCharges ?? 0).toFixed(2),
+//       vatRefund: (input.vatRefund ?? 0).toFixed(2),
+//       roundOff: (input.roundOff ?? 0).toFixed(2),
+//       vatAmount: totals.vatAmount.toFixed(2),
+//       grandTotal: totals.grandTotal.toFixed(2),
+//       prescriptionNote: input.prescriptionNote,
+//       createdByUserId: userId,
+//     })
+//     .returning({ id: sales.id });
+
+//   if (!sale) {
+//     throw new Error("Failed to create sale");
+//   }
+
+//   try {
+//     // 4. Insert one sale_item row per line — direct 1:1 with the batch the
+//     // staff selected, no splitting across multiple batches.
+//     await db.insert(saleItems).values(
+//       input.items.map((item, i) => ({
+//         saleId: sale.id,
+//         productId: item.productId,
+//         batchId: item.batchId,
+//         quantity: item.quantity,
+//         salePrice: item.salePrice.toFixed(2),
+//         vatAmount: "0", // total VAT lives on the sale header, not split per line
+//         lineTotal: totals.lineTotals[i].toFixed(2),
+//       }))
+//     );
+
+//     // 5. Decrement quantityAvailable on each selected batch.
+//     await Promise.all(
+//       input.items.map((item) =>
+//         db
+//           .update(batches)
+//           .set({
+//             quantityAvailable: sql`${batches.quantityAvailable} - ${item.quantity}`,
+//             updatedAt: new Date(),
+//           })
+//           .where(eq(batches.id, item.batchId))
+//       )
+//     );
+
+//     // 6. Decrease stockQuantity per product — sum quantities per productId
+//     // first, since a sale can have multiple lines for the same product
+//     // (different batches), so this issues one UPDATE per product, not per line.
+//     const quantityByProduct = new Map<string, number>();
+//     for (const item of input.items) {
+//       quantityByProduct.set(
+//         item.productId,
+//         (quantityByProduct.get(item.productId) ?? 0) + item.quantity
+//       );
+//     }
+
+//     await Promise.all(
+//       Array.from(quantityByProduct.entries()).map(([productId, qty]) =>
+//         db
+//           .update(products)
+//           .set({
+//             stockQuantity: sql`${products.stockQuantity} - ${qty}`,
+//             updatedAt: new Date(),
+//           })
+//           .where(eq(products.id, productId))
+//       )
+//     );
+
+//     // 7. Invalidate caches for everything this sale touched.
+//     await Promise.all([
+//       invalidateCache(`products:list:${organizationId}`),
+//       ...Array.from(quantityByProduct.keys()).map((productId) =>
+//         invalidateCache(`products:one:${organizationId}:${productId}`)
+//       ),
+//     ]);
+
+//     return { saleId: sale.id, invoiceNumber, totals };
+//   } catch (error) {
+//     // Best-effort cleanup — same honest caveat as createPurchase: the Neon
+//     // HTTP driver has no true multi-statement rollback, so this deletes the
+//     // sale header if anything after it fails, but isn't a guaranteed atomic
+//     // rollback of every step above.
+//     await db.delete(sales).where(eq(sales.id, sale.id));
+//     throw error;
+//   }
+// }
 
 export async function createSale(
   organizationId: string,
@@ -11,29 +137,39 @@ export async function createSale(
   input: CreateSaleInput
 ) {
   const totals = calculateSaleTotals(input);
-
-  // 1. Validate every line's manually-selected batch has enough stock —
-  // before writing anything. No FEFO fallback, no auto-picking; if the
-  // chosen batch can't cover the quantity, the whole sale is rejected.
+ 
+  // 1. Validate every line before writing anything: batch exists, belongs to
+  // this org and this product, is not expired, and has enough stock.
+  // Quantities are summed per batch first — two lines on the same batch each
+  // pass on their own but can still exceed what's available together.
+  const quantityByBatch = new Map<string, { productId: string; quantity: number }>();
   for (const item of input.items) {
-    await validateBatchSelection(organizationId, item.productId, item.batchId, item.quantity);
+    const existing = quantityByBatch.get(item.batchId);
+    quantityByBatch.set(item.batchId, {
+      productId: item.productId,
+      quantity: (existing?.quantity ?? 0) + item.quantity,
+    });
   }
-
+ 
+  for (const [batchId, { productId, quantity }] of quantityByBatch) {
+    await assertBatchSellable(organizationId, productId, batchId, quantity);
+  }
+ 
   // 2. Reserve and atomically increment the organization's invoice number.
   const [org] = await db
     .update(organizations)
     .set({ nextInvoiceNumber: sql`${organizations.nextInvoiceNumber} + 1` })
     .where(eq(organizations.id, organizationId))
     .returning({ invoiceNumber: organizations.nextInvoiceNumber });
-
+ 
   if (!org) {
     throw new Error("Failed to reserve invoice number");
   }
-
+ 
   // The returned value is already incremented — this sale uses the number
   // from before the increment.
   const invoiceNumber = org.invoiceNumber - 1;
-
+ 
   // 3. Create the sale header.
   const [sale] = await db
     .insert(sales)
@@ -55,11 +191,11 @@ export async function createSale(
       createdByUserId: userId,
     })
     .returning({ id: sales.id });
-
+ 
   if (!sale) {
     throw new Error("Failed to create sale");
   }
-
+ 
   try {
     // 4. Insert one sale_item row per line — direct 1:1 with the batch the
     // staff selected, no splitting across multiple batches.
@@ -74,20 +210,34 @@ export async function createSale(
         lineTotal: totals.lineTotals[i].toFixed(2),
       }))
     );
-
-    // 5. Decrement quantityAvailable on each selected batch.
+ 
+    // 5. Decrement quantityAvailable per batch. The guard on the UPDATE is a
+    // second line of defence: between the check in step 1 and here, another
+    // sale could have taken the stock. If no row comes back, someone beat us
+    // to it and the catch below cleans up.
     await Promise.all(
-      input.items.map((item) =>
-        db
+      Array.from(quantityByBatch.entries()).map(async ([batchId, { quantity }]) => {
+        const updated = await db
           .update(batches)
           .set({
-            quantityAvailable: sql`${batches.quantityAvailable} - ${item.quantity}`,
+            quantityAvailable: sql`${batches.quantityAvailable} - ${quantity}`,
             updatedAt: new Date(),
           })
-          .where(eq(batches.id, item.batchId))
-      )
+          .where(
+            and(
+              eq(batches.id, batchId),
+              sql`${batches.quantityAvailable} >= ${quantity}`,
+              sql`${batches.expiryDate} >= CURRENT_DATE`,
+            )
+          )
+          .returning({ id: batches.id });
+ 
+        if (!updated.length) {
+          throw new Error(`Batch ${batchId} is no longer sellable`);
+        }
+      })
     );
-
+ 
     // 6. Decrease stockQuantity per product — sum quantities per productId
     // first, since a sale can have multiple lines for the same product
     // (different batches), so this issues one UPDATE per product, not per line.
@@ -98,7 +248,7 @@ export async function createSale(
         (quantityByProduct.get(item.productId) ?? 0) + item.quantity
       );
     }
-
+ 
     await Promise.all(
       Array.from(quantityByProduct.entries()).map(([productId, qty]) =>
         db
@@ -110,7 +260,7 @@ export async function createSale(
           .where(eq(products.id, productId))
       )
     );
-
+ 
     // 7. Invalidate caches for everything this sale touched.
     await Promise.all([
       invalidateCache(`products:list:${organizationId}`),
@@ -118,19 +268,13 @@ export async function createSale(
         invalidateCache(`products:one:${organizationId}:${productId}`)
       ),
     ]);
-
+ 
     return { saleId: sale.id, invoiceNumber, totals };
   } catch (error) {
-    // Best-effort cleanup — same honest caveat as createPurchase: the Neon
-    // HTTP driver has no true multi-statement rollback, so this deletes the
-    // sale header if anything after it fails, but isn't a guaranteed atomic
-    // rollback of every step above.
     await db.delete(sales).where(eq(sales.id, sale.id));
     throw error;
   }
 }
-
-
 
 
 export async function updateSale(

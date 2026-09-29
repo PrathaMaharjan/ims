@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { getAuth } from "@/lib/auth/require-auth";
 import { createSaleSchema, listSalesQuerySchema } from "@/lib/validation/sales";
 import { createSale } from "@/controller/sales/batchesWIse/conteoller";
+import { BatchNotSellableError } from "@/controller/batches/controller";
 // import { createSale } from "@/controller/sales/controller";
 
 export async function GET(req: NextRequest) {
@@ -61,14 +62,19 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    console.log(parsed.data.items)
+
 
     const result = await createSale(auth.organizationId, auth.userId, parsed.data);
     return NextResponse.json(result, { status: 201 });
-  } catch (error) {
-    console.error("POST /sales failed:", error);
-    const message = error instanceof Error ? error.message : "Failed to create sale";
-    const status = message.startsWith("Insufficient stock") ? 400 : 500;
-    return NextResponse.json({ error: message }, { status });
+  } catch (err) {
+    if (err instanceof BatchNotSellableError) {
+      return NextResponse.json(
+        { error: err.message, batchId: err.batchId, reason: err.reason },
+        { status: 400 },
+      );
+    }
+ 
+    console.error("POST /api/sales failed:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

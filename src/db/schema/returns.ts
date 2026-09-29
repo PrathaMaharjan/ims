@@ -1,9 +1,18 @@
-import { pgTable, uuid, varchar, date, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  varchar,
+  date,
+  integer,
+  boolean,
+  timestamp,
+  numeric,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { parties } from "./parties";
 import { batches } from "./batches";
 import { sales, saleItems } from "./sales";
-import { purchaseReturnStatusEnum, saleReturnStatusEnum } from "./enums";
+import { purchaseReturnStatusEnum, returnResolutionTypeEnum, saleReturnStatusEnum } from "./enums";
 
 export const purchaseReturns = pgTable("purchase_returns", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -17,6 +26,11 @@ export const purchaseReturns = pgTable("purchase_returns", {
     .notNull()
     .references(() => batches.id, { onDelete: "restrict" }),
   quantity: integer("quantity").notNull(),
+  resolutionType: returnResolutionTypeEnum("resolution_type"), // null until completed
+  resolutionAmount: numeric("resolution_amount", { precision: 12, scale: 2 }), // set only for MONEY
+  resolvedBatchId: uuid("resolved_batch_id").references(() => batches.id, {
+    onDelete: "set null",
+  }),
   reason: varchar("reason", { length: 255 }), // e.g. "expired", "damaged"
   status: purchaseReturnStatusEnum("status").notNull().default("PENDING"),
   returnDate: date("return_date").notNull(),

@@ -51,3 +51,8 @@ export const purchasePaymentTypeEnum = pgEnum("purchase_payment_type", [
 ]);
 
 export const roundingDirectionEnum = pgEnum("rounding_direction", ["UP", "DOWN"]);
+
+export const returnResolutionTypeEnum = pgEnum("return_resolution_type", [
+  "QUANTITY",
+  "MONEY",
+]);

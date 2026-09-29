@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   UserPlus,
   Users,
@@ -16,7 +16,15 @@ import {
   AlertCircle,
   X,
   CheckCircle2,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import { api } from "@/lib/api-client";
+
+
+const PAGE_SIZE = 10;
+const MIN_PASSWORD = 8;
 
 interface AccountItem {
   id: string;
@@ -25,36 +33,40 @@ interface AccountItem {
   createdAt: string;
 }
 
-const INITIAL_ACCOUNTS: AccountItem[] = [
-  {
-    id: "acc-1",
-    name: "Dr. Bimal Adhikari",
-    email: "bimal.owner@pharma.com",
-    createdAt: "2026-01-15",
-  },
-  {
-    id: "acc-2",
-    name: "Sita Sharma",
-    email: "sita.sharma@pharma.com",
-    createdAt: "2026-02-04",
-  },
-  {
-    id: "acc-3",
-    name: "Ramesh Thapa",
-    email: "ramesh.thapa@pharma.com",
-    createdAt: "2026-02-28",
-  },
-  {
-    id: "acc-4",
-    name: "Anjali Karki",
-    email: "anjali.karki@pharma.com",
-    createdAt: "2026-03-10",
-  },
-];
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+// Pull a readable message out of an axios error so a Zod flatten() object
+// never reaches the screen as [object Object].
+function getErrorMessage(err: unknown, fallback: string): string {
+  const data = (err as { response?: { data?: any } })?.response?.data;
+  if (!data) return fallback;
+  if (typeof data.error === "string") {
+    const fieldErrors = data.details?.fieldErrors as Record<string, string[]> | undefined;
+    const first = fieldErrors ? Object.values(fieldErrors).flat()[0] : undefined;
+    return first ?? data.error;
+  }
+  return fallback;
+}
 
 export default function AddAccountPage() {
-  const [accounts, setAccounts] = useState<AccountItem[]>(INITIAL_ACCOUNTS);
+  const [accounts, setAccounts] = useState<AccountItem[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({
+    page: 1,
+    limit: PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  });
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Modal State for Add User
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -69,8 +81,42 @@ export default function AddAccountPage() {
 
   // Submission State
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Debounce search, and go back to page 1 when it changes
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const fetchAccounts = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const { data } = await api.get("/api/staff", {
+        params: {
+          page,
+          limit: PAGE_SIZE,
+          ...(debouncedSearch ? { search: debouncedSearch } : {}),
+        },
+      });
+      setAccounts(data.items);
+      setPagination(data.pagination);
+    } catch (err) {
+      setLoadError(getErrorMessage(err, "Failed to load accounts."));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [page, debouncedSearch]);
+
+  useEffect(() => {
+    fetchAccounts();
+  }, [fetchAccounts]);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -108,7 +154,7 @@ export default function AddAccountPage() {
     setIsModalOpen(false);
   }
 
-  function handleCreateAccount(e: React.FormEvent) {
+  async function handleCreateAccount(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
 
@@ -119,62 +165,70 @@ export default function AddAccountPage() {
       setFormError("Full name is required.");
       return;
     }
-
     if (!trimmedEmail || !trimmedEmail.includes("@")) {
       setFormError("Please enter a valid email address.");
       return;
     }
-
-    if (accounts.some((acc) => acc.email.toLowerCase() === trimmedEmail)) {
-      setFormError("An account with this email address already exists.");
-      return;
-    }
-
     if (!password) {
       setFormError("Password is required.");
       return;
     }
-
-    if (password.length < 6) {
-      setFormError("Password must be at least 6 characters.");
+    if (password.length < MIN_PASSWORD) {
+      setFormError(`Password must be at least ${MIN_PASSWORD} characters.`);
       return;
     }
-
     if (password !== confirmPassword) {
       setFormError("Passwords do not match.");
       return;
     }
 
     setIsSubmitting(true);
-
-    setTimeout(() => {
-      const newAcc: AccountItem = {
-        id: `acc-${Date.now()}`,
+    try {
+      const { data } = await api.post("/api/staff", {
         name: trimmedName,
         email: trimmedEmail,
-        createdAt: new Date().toISOString().split("T")[0],
-      };
+        password,
+      });
 
-      setAccounts((prev) => [newAcc, ...prev]);
       resetForm();
-      setIsSubmitting(false);
       setIsModalOpen(false);
-      triggerToast(`Account created successfully for ${newAcc.name}!`);
-    }, 350);
-  }
 
-  function handleDeleteAccount(id: string, accName: string) {
-    if (window.confirm(`Are you sure you want to delete the account for "${accName}"?`)) {
-      setAccounts((prev) => prev.filter((acc) => acc.id !== id));
-      triggerToast(`Account for ${accName} removed.`);
+      if (data.emailSent === false) {
+        triggerToast(
+          `Account created for ${data.name}, but the welcome email could not be sent.`
+        );
+      } else {
+        triggerToast(`Account created. Login details emailed to ${data.email}.`);
+      }
+
+      // New account is newest-first, so go to page 1 and reload
+      if (page === 1) await fetchAccounts();
+      else setPage(1);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Failed to create account."));
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
-  const filteredAccounts = accounts.filter(
-    (acc) =>
-      acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      acc.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  async function handleDeleteAccount(id: string, accName: string) {
+    if (!window.confirm(`Are you sure you want to delete the account for "${accName}"?`)) {
+      return;
+    }
+    setDeletingId(id);
+    try {
+      await api.delete(`/api/staff/${id}`);
+      triggerToast(`Account for ${accName} removed.`);
+
+      // If that was the last row on this page, step back one page
+      if (accounts.length === 1 && page > 1) setPage(page - 1);
+      else await fetchAccounts();
+    } catch (err) {
+      triggerToast(getErrorMessage(err, "Failed to delete account."));
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const passwordsMatch =
     confirmPassword.length > 0 && password === confirmPassword;
@@ -212,7 +266,7 @@ export default function AddAccountPage() {
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-800">Existing Accounts</h2>
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-[#044d73] border border-sky-100">
-                  {accounts.length} Total
+                  {pagination.total} Total
                 </span>
               </div>
             </div>
@@ -252,17 +306,34 @@ export default function AddAccountPage() {
           </div>
         </div>
 
-        {/* Existing Accounts Table (Full Width) */}
-        {filteredAccounts.length === 0 ? (
+        {/* Accounts Table */}
+        {isLoading && accounts.length === 0 ? (
+          <div className="py-16 flex items-center justify-center gap-2 text-slate-500 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading accounts...
+          </div>
+        ) : loadError ? (
+          <div className="py-16 text-center">
+            <AlertCircle className="h-10 w-10 text-rose-300 mx-auto mb-3" />
+            <p className="text-sm font-semibold text-slate-700">{loadError}</p>
+            <button
+              type="button"
+              onClick={fetchAccounts}
+              className="mt-3 text-xs font-semibold text-[#044d73] hover:underline"
+            >
+              Try again
+            </button>
+          </div>
+        ) : accounts.length === 0 ? (
           <div className="py-16 text-center text-slate-500">
             <Users className="h-12 w-12 text-slate-300 mx-auto mb-3" />
             <p className="text-base font-semibold text-slate-700">No accounts found</p>
             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              {searchQuery
-                ? `No accounts matched "${searchQuery}".`
+              {debouncedSearch
+                ? `No accounts matched "${debouncedSearch}".`
                 : "No accounts have been created yet."}
             </p>
-            {searchQuery ? (
+            {debouncedSearch ? (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
@@ -282,7 +353,7 @@ export default function AddAccountPage() {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={`overflow-x-auto transition-opacity ${isLoading ? "opacity-60" : ""}`}>
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -293,7 +364,7 @@ export default function AddAccountPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {filteredAccounts.map((account) => {
+                {accounts.map((account) => {
                   const initials = account.name
                     .split(" ")
                     .filter(Boolean)
@@ -333,7 +404,7 @@ export default function AddAccountPage() {
                       <td className="py-4 px-6 whitespace-nowrap text-slate-500">
                         <div className="flex items-center gap-1.5 text-xs">
                           <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                          {account.createdAt}
+                          {String(account.createdAt).slice(0, 10)}
                         </div>
                       </td>
 
@@ -341,11 +412,16 @@ export default function AddAccountPage() {
                       <td className="py-4 px-6 text-right whitespace-nowrap">
                         <button
                           type="button"
+                          disabled={deletingId === account.id}
                           onClick={() => handleDeleteAccount(account.id, account.name)}
                           title="Delete account"
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100 disabled:opacity-50"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          {deletingId === account.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
                           <span className="text-xs font-medium">Delete</span>
                         </button>
                       </td>
@@ -354,6 +430,35 @@ export default function AddAccountPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-slate-100 bg-slate-50/50 text-xs text-slate-500">
+            <span>
+              Page {pagination.page} of {pagination.totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1 || isLoading}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Prev
+              </button>
+              <button
+                type="button"
+                disabled={page >= pagination.totalPages || isLoading}
+                onClick={() => setPage((p) => p + 1)}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Next
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -449,7 +554,7 @@ export default function AddAccountPage() {
                       <input
                         type={showPassword ? "text" : "password"}
                         required
-                        placeholder="Min 6 characters"
+                        placeholder={`Min ${MIN_PASSWORD} characters`}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full rounded-lg border border-slate-200 pl-9 pr-9 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
@@ -516,7 +621,8 @@ export default function AddAccountPage() {
                 </div>
 
                 <p className="text-[11px] text-slate-400">
-                  Password should be at least 6 characters long.
+                  Password should be at least {MIN_PASSWORD} characters long. The login
+                  details are emailed to the user, who is asked to change the password.
                 </p>
               </div>
 
@@ -534,7 +640,11 @@ export default function AddAccountPage() {
                   disabled={isSubmitting}
                   className="inline-flex items-center gap-2 rounded-lg bg-[#044d73] hover:bg-[#033b59] px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all disabled:opacity-50 active:scale-[0.98]"
                 >
-                  <UserPlus className="h-4 w-4" />
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-4 w-4" />
+                  )}
                   {isSubmitting ? "Creating..." : "Create Account"}
                 </button>
               </div>

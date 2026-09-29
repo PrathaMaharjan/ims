@@ -39,7 +39,7 @@ const batchColumns = {
   createdAt: true,
 } as const;
 
-const DEFAULT_NEAR_EXPIRY_DAYS = 15;
+const DEFAULT_NEAR_EXPIRY_DAYS = 90;
 
 function daysUntil(expiryDate: string): number {
   const [y, m, d] = expiryDate.split("-").map(Number);

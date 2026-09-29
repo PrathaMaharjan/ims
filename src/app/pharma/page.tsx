@@ -16,6 +16,7 @@ import {
     RotateCcw,
     ChevronLeft,
     ChevronRight,
+    FileDown,
 } from "lucide-react";
 import {
     ComposedChart,
@@ -32,6 +33,7 @@ import {
     Cell,
 } from "recharts";
 import { api } from "@/lib/api-client";
+import { CriticalStockReportModal } from "./_components/CriticalStockReportModal";
 
 type ViewMode = "monthly" | "yearly";
 
@@ -64,8 +66,11 @@ interface WatchlistItem {
     status: "EXPIRED" | "NEAR_EXPIRY" | "LOW_STOCK";
     name: string;
     manufacturer: string | null;
+    unit?: string | null;
     batchNumber: string | null;
     expiryDate: string | null;
+    supplierName?: string | null;
+    daysLeft?: number | null;
     quantityAvailable: number;
     quantityReceived: number | null;
 }
@@ -123,6 +128,7 @@ export default function DashboardPage() {
     const [inventoryStatus, setInventoryStatus] = useState<InventoryStatus | null>(null);
     const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
     const [watchlistPage, setWatchlistPage] = useState(1);
+    const [showReportModal, setShowReportModal] = useState(false);
     const [transactions, setTransactions] = useState<TransactionItem[]>([]);
     const [breakdown, setBreakdown] = useState<BreakdownSlice[]>([]);
     const [trend, setTrend] = useState<TrendPoint[]>([]);
@@ -485,7 +491,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm space-y-4 min-w-0 flex flex-col justify-between">
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                             <div className="flex items-center gap-2">
                                 <AlertTriangle className="h-4 w-4 text-amber-500" />
                                 <h3 className="text-sm font-bold text-slate-900">Critical Stock & Expiry Watchlist</h3>
@@ -495,10 +501,23 @@ export default function DashboardPage() {
                                     </span>
                                 )}
                             </div>
-                            <Link href="/pharma/inventory" className="text-xs font-semibold text-[#044d73] hover:underline flex items-center gap-1">
-                                View All Items
-                                <ArrowUpRight className="h-3.5 w-3.5" />
-                            </Link>
+                            <div className="flex items-center gap-2">
+                                {watchlist.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowReportModal(true)}
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#044d73] bg-[#044d73]/10 hover:bg-[#044d73]/20 border border-[#044d73]/20 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                                        title="Download PDF or Excel Report of near expiry & low stock items"
+                                    >
+                                        <FileDown className="h-3.5 w-3.5" />
+                                        <span>Download Report</span>
+                                    </button>
+                                )}
+                                <Link href="/pharma/inventory" className="text-xs font-semibold text-slate-500 hover:text-[#044d73] hover:underline flex items-center gap-1 pl-1">
+                                    View All Items
+                                    <ArrowUpRight className="h-3.5 w-3.5" />
+                                </Link>
+                            </div>
                         </div>
 
                         <div className="divide-y divide-slate-100">
@@ -516,6 +535,17 @@ export default function DashboardPage() {
                                         {item.batchNumber && (
                                             <p className="text-[11px] text-slate-400 mt-0.5">
                                                 Batch: {item.batchNumber} · Exp: {item.expiryDate}
+                                                {item.daysLeft !== undefined && item.daysLeft !== null && (
+                                                    <span className={`ml-1 font-medium ${item.daysLeft < 0 ? "text-red-500" : "text-amber-600"}`}>
+                                                        ({item.daysLeft < 0 ? `Expired ${Math.abs(item.daysLeft)}d ago` : `${item.daysLeft}d left`})
+                                                    </span>
+                                                )}
+                                                {item.supplierName && ` · Supp: ${item.supplierName}`}
+                                            </p>
+                                        )}
+                                        {!item.batchNumber && item.quantityReceived && (
+                                            <p className="text-[11px] text-slate-400 mt-0.5">
+                                                Min threshold: {item.quantityReceived} {item.unit || "units"}
                                             </p>
                                         )}
                                     </div>
@@ -523,7 +553,8 @@ export default function DashboardPage() {
                                     <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                                         <div className="text-right">
                                             <span className="text-xs font-bold text-slate-800 block">
-                                                {item.quantityAvailable} / {item.quantityReceived ?? "—"}
+                                                {item.quantityAvailable} {item.unit ? <span className="text-[11px] font-normal text-slate-500">{item.unit}</span> : ""}
+                                                <span className="text-slate-400 font-normal text-[11px]"> / {item.quantityReceived ?? "—"}</span>
                                             </span>
                                             <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${WATCHLIST_STATUS_STYLE[item.status]}`}>
                                                 {WATCHLIST_STATUS_LABEL[item.status]}
@@ -629,6 +660,13 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </div>
+
+            {showReportModal && (
+                <CriticalStockReportModal
+                    items={watchlist}
+                    onClose={() => setShowReportModal(false)}
+                />
+            )}
         </div>
     );
 }

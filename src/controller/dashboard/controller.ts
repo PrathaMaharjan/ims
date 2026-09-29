@@ -166,7 +166,10 @@ export async function getInventoryStatus(organizationId: string): Promise<Invent
 // Critical Stock & Expiry Watchlist
  
 
-export async function getCriticalWatchlist(organizationId: string) {
+export async function getCriticalWatchlist(
+  organizationId: string,
+  withinDays: number = NEAR_EXPIRY_DAYS,
+) {
   const lowStock = await db
     .select({
       productId: products.id,
@@ -195,14 +198,16 @@ export async function getCriticalWatchlist(organizationId: string) {
       name: products.name,
       manufacturer: products.manufacturer,
       unit: products.unit,
+      supplierName: parties.name,
     })
     .from(batches)
     .innerJoin(products, eq(batches.productId, products.id))
+    .leftJoin(parties, eq(batches.partyId, parties.id))
     .where(
       and(
         eq(batches.organizationId, organizationId),
         sql`${batches.quantityAvailable} > 0`,
-        sql`${batches.expiryDate} <= CURRENT_DATE + ${NEAR_EXPIRY_DAYS}::int`,
+        sql`${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int`,
       ),
     )
     .orderBy(batches.expiryDate);
@@ -212,20 +217,29 @@ export async function getCriticalWatchlist(organizationId: string) {
       status: "LOW_STOCK" as const,
       name: p.name,
       manufacturer: p.manufacturer,
+      unit: p.unit,
       batchNumber: null,
       expiryDate: null,
+      supplierName: null,
+      daysLeft: null,
       quantityAvailable: p.stockQuantity,
       quantityReceived: p.lowStockThreshold,
     })),
-    ...expiring.map((b) => ({
-      status: daysUntil(b.expiryDate) < 0 ? "EXPIRED" as const : "NEAR_EXPIRY" as const,
-      name: b.name,
-      manufacturer: b.manufacturer,
-      batchNumber: b.batchNumber,
-      expiryDate: b.expiryDate,
-      quantityAvailable: b.quantityAvailable,
-      quantityReceived: b.quantityReceived,
-    })),
+    ...expiring.map((b) => {
+      const daysLeft = daysUntil(b.expiryDate);
+      return {
+        status: daysLeft < 0 ? ("EXPIRED" as const) : ("NEAR_EXPIRY" as const),
+        name: b.name,
+        manufacturer: b.manufacturer,
+        unit: b.unit,
+        batchNumber: b.batchNumber,
+        expiryDate: b.expiryDate,
+        supplierName: b.supplierName ?? null,
+        daysLeft,
+        quantityAvailable: b.quantityAvailable,
+        quantityReceived: b.quantityReceived,
+      };
+    }),
   ];
 
   const rank = { EXPIRED: 0, NEAR_EXPIRY: 1, LOW_STOCK: 2 };

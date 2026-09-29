@@ -420,11 +420,10 @@ function CreatableSelect({
           type="button"
           onClick={() => setManaging((p) => !p)}
           title={`Manage / Delete ${noun}s`}
-          className={`shrink-0 rounded-lg border px-2.5 transition-colors ${
-            managing
+          className={`shrink-0 rounded-lg border px-2.5 transition-colors ${managing
               ? "border-[#044d73] bg-[#044d73] text-white"
               : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600 hover:bg-slate-50"
-          }`}
+            }`}
         >
           <ListFilter className="h-4 w-4" />
         </button>
@@ -549,6 +548,7 @@ export default function InventoryPage() {
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [batchesError, setBatchesError] = useState<string | null>(null);
   const [expandedBatchIds, setExpandedBatchIds] = useState<string[]>([]);
+  const [batchSearch, setBatchSearch] = useState("");
 
   function toggleBatchExpand(id: string) {
     setExpandedBatchIds((prev) =>
@@ -587,6 +587,22 @@ export default function InventoryPage() {
       }),
     [items, search, stockFilter, categoryFilter],
   );
+
+  // Batch search inside the view modal — matches batch no, supplier,
+  // expiry/mfg date, status label, and note text.
+  const filteredBatches = useMemo(() => {
+    const q = batchSearch.trim().toLowerCase();
+    if (!q) return viewingBatches;
+    return viewingBatches.filter(
+      (b) =>
+        b.batchNumber.toLowerCase().includes(q) ||
+        (b.party?.name ?? "").toLowerCase().includes(q) ||
+        b.expiryDate.toLowerCase().includes(q) ||
+        (b.manufacturingDate ?? "").toLowerCase().includes(q) ||
+        EXPIRY_STATUS_LABEL[b.status].toLowerCase().includes(q) ||
+        (b.note ?? "").toLowerCase().includes(q),
+    );
+  }, [viewingBatches, batchSearch]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice(
@@ -759,6 +775,7 @@ export default function InventoryPage() {
     setViewingItem(item);
     setViewingBatches([]);
     setExpandedBatchIds([]);
+    setBatchSearch("");
     setBatchesError(null);
     setLoadingBatches(true);
     try {
@@ -1241,14 +1258,40 @@ export default function InventoryPage() {
 
                   {/* Batches — fetched on demand for this specific product */}
                   <div>
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-[#044d73] flex items-center gap-1.5">
                         <Boxes className="w-4 h-4" /> Added Batches & Stock per
                         Batch
                       </h4>
-                      <span className="text-xs text-slate-400">
-                        Click on a batch to view notes & remarks
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="hidden md:inline text-xs text-slate-400">
+                          Click on a batch to view notes & remarks
+                        </span>
+                        {!loadingBatches &&
+                          !batchesError &&
+                          viewingBatches.length > 0 && (
+                            <div className="relative w-56">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                              <input
+                                type="text"
+                                value={batchSearch}
+                                onChange={(e) => setBatchSearch(e.target.value)}
+                                placeholder="Search batch, supplier, expiry"
+                                className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-8 text-xs text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                              {batchSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setBatchSearch("")}
+                                  title="Clear search"
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                      </div>
                     </div>
 
                     {loadingBatches ? (
@@ -1272,6 +1315,16 @@ export default function InventoryPage() {
                           recording purchase deliveries in the Purchase page.
                         </p>
                       </div>
+                    ) : filteredBatches.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50/50">
+                        <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm font-semibold text-slate-600">
+                          No batches match your search
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Try a different batch number, supplier, or date.
+                        </p>
+                      </div>
                     ) : (
                       <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
                         <table className="w-full text-xs">
@@ -1289,7 +1342,7 @@ export default function InventoryPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {viewingBatches.map((b) => {
+                            {filteredBatches.map((b) => {
                               const isExpanded = expandedBatchIds.includes(
                                 b.id,
                               );

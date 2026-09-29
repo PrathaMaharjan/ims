@@ -8,6 +8,7 @@ export class PurchaseReturnError extends Error {
     message: string,
     readonly reason:
       | "BATCH_NOT_FOUND"
+      | "SUPPLIER_NOT_FOUND"
       | "INSUFFICIENT_STOCK"
       | "NOT_PENDING"
       | "RETURN_NOT_FOUND"
@@ -34,6 +35,13 @@ export async function createPurchaseReturn(organizationId: string, input: Create
 
   if (!batch) {
     throw new PurchaseReturnError("Batch not found", "BATCH_NOT_FOUND");
+  }
+
+  if (!batch.partyId) {
+    throw new PurchaseReturnError(
+      "Cannot return a batch with no associated supplier",
+      "SUPPLIER_NOT_FOUND",
+    );
   }
 
   // No expiry restriction here — a batch can be returned to the supplier

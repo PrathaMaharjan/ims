@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     ChevronLeft, ChevronRight, ChevronDown, LogOut, Menu, X,
-    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Layers, FileText,
+    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Layers, FileText, UserPlus,
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 
-type IconKey = 'dashboard' | 'inventory' | 'batches' | 'purchase' | 'sales' | 'parties' | 'ledger' | 'expense' | 'analytics' | 'settings';
+type IconKey = 'dashboard' | 'inventory' | 'batches' | 'purchase' | 'sales' | 'parties' | 'ledger' | 'expense' | 'analytics' | 'settings' | 'account';
 
 const iconMap: Record<IconKey, LucideIcon> = {
     dashboard: LayoutDashboard,
@@ -23,6 +23,7 @@ const iconMap: Record<IconKey, LucideIcon> = {
     expense: Wallet,
     analytics: BarChart3,
     settings: Settings,
+    account: UserPlus,
 };
 
 /* A single navigable link. */
@@ -73,7 +74,18 @@ const defaultEntries: NavEntry[] = [
             ],
         },
     },
-    { type: 'item', item: { match: '/pharma/settings', href: '/pharma/settings', label: 'Settings', icon: 'settings' } },
+    {
+        type: 'group',
+        group: {
+            id: 'settings',
+            label: 'Settings',
+            icon: 'settings',
+            items: [
+                { match: '/pharma/settings', href: '/pharma/settings', label: 'General', icon: 'settings' },
+                { match: '/pharma/settings/add-account', href: '/pharma/settings/add-account', label: 'Add Account', icon: 'account' },
+            ],
+        },
+    },
 ];
 
 type SidebarUser = { name: string; email?: string };
@@ -199,6 +211,7 @@ function NavList({
         if (path === '/pharma') return pathname === '/pharma';
         if (path === '/pharma/parties/ledger') return pathname.includes('/ledger');
         if (path === '/pharma/parties') return pathname.startsWith('/pharma/parties') && !pathname.includes('/ledger');
+        if (path === '/pharma/settings') return pathname === '/pharma/settings';
         return pathname === path || pathname.startsWith(path + '/');
     };
     const groupContainsActive = (group: NavGroup) => group.items.some((i) => isActive(i.match));

@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
-import { RefreshCw } from "lucide-react";
+import { ChevronLeft, Plus } from "lucide-react";
 import Link from "next/link";
+import { DotsLoader } from "@/app/pharma/_components/ui/dots-loader";
 
 export default function GeneralLedgerRedirect() {
   const router = useRouter();
@@ -30,26 +31,41 @@ export default function GeneralLedgerRedirect() {
       });
   }, [router]);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <RefreshCw className="h-4 w-4 animate-spin text-[#044d73]" />
-          Loading party ledger...
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
-      <p className="text-slate-600 font-medium">No parties created yet.</p>
-      <Link
-        href="/pharma/parties"
-        className="rounded-lg bg-[#044d73] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#033f60]"
-      >
-        Go to Parties to Add One
-      </Link>
+    <div className="flex flex-col gap-8 pb-16">
+      {/* Header Banner */}
+      <div className="rounded-xl bg-[#044d73] px-6 py-5 text-white shadow-sm flex items-center justify-between">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Party Ledger</h1>
+          <p className="text-xs sm:text-sm text-white/80 mt-1">
+            Party account ledger and transaction statement
+          </p>
+        </div>
+        <Link
+          href="/pharma/parties"
+          className="flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-white transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Parties
+        </Link>
+      </div>
+
+      {loading ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-16 shadow-sm">
+          <DotsLoader text="Opening party ledger..." size="md" />
+        </div>
+      ) : (
+        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-center bg-white rounded-xl border border-slate-200 p-8 shadow-sm">
+          <p className="text-slate-600 font-medium">No parties created yet.</p>
+          <Link
+            href="/pharma/parties"
+            className="flex items-center gap-2 rounded-lg bg-[#044d73] px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Go to Parties to Add One
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

@@ -20,6 +20,8 @@ import {
   FileText,
   RotateCcw,
   Trash2,
+  DollarSign,
+  ArrowDownLeft,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
@@ -97,6 +99,7 @@ interface WriteOff {
 }
 
 type StatusFilterOption = "all" | "expired" | "near" | "ok";
+type ActionFilterOption = "all" | "action_needed" | "pending_return" | "completed_return" | "written_off";
 type ActionPanel = "none" | "return" | "writeoff";
 
 const PAGE_LIMIT = 10;
@@ -210,6 +213,7 @@ export default function BatchesPage() {
 
   const [loading, setLoading] = useState<boolean>(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilterOption>("all");
+  const [actionFilter, setActionFilter] = useState<ActionFilterOption>("all");
   const [withinDays, setWithinDays] = useState<number>(90);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedBatch, setSelectedBatch] = useState<BatchItem | null>(null);
@@ -321,6 +325,13 @@ export default function BatchesPage() {
     () => new Set(writeOffs.map((w) => w.batchId)),
     [writeOffs],
   );
+  const writeOffByBatch = useMemo(() => {
+    const map = new Map<string, WriteOff>();
+    for (const w of writeOffs) {
+      map.set(w.batchId, w);
+    }
+    return map;
+  }, [writeOffs]);
   const returnsByBatch = useMemo(() => {
     const map: Record<string, PurchaseReturn[]> = {};
     for (const r of allReturns) {
@@ -454,17 +465,36 @@ export default function BatchesPage() {
     };
   }, [selectedBatch, productBatches]);
 
-  // Client-side text filter for batch number, product name, or supplier
+  // Client-side text filter for batch number, product name, or supplier, plus action filter
   const filteredBatches = useMemo(() => {
-    if (!searchQuery.trim()) return batches;
-    const q = searchQuery.toLowerCase().trim();
-    return batches.filter(
-      (b) =>
-        b.batchNumber?.toLowerCase().includes(q) ||
-        b.productName?.toLowerCase().includes(q) ||
-        b.partyName?.toLowerCase().includes(q),
-    );
-  }, [batches, searchQuery]);
+    let list = batches;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(
+        (b) =>
+          b.batchNumber?.toLowerCase().includes(q) ||
+          b.productName?.toLowerCase().includes(q) ||
+          b.partyName?.toLowerCase().includes(q),
+      );
+    }
+    if (actionFilter !== "all") {
+      list = list.filter((b) => {
+        const isWO = writtenOffIds.has(b.batchId);
+        const bReturns = returnsByBatch[b.batchId] ?? [];
+        const hasPending = bReturns.some((r) => r.status === "PENDING");
+        const hasCompleted = bReturns.some((r) => r.status === "COMPLETED");
+
+        if (actionFilter === "pending_return") return hasPending;
+        if (actionFilter === "completed_return") return hasCompleted;
+        if (actionFilter === "written_off") return isWO;
+        if (actionFilter === "action_needed") {
+          return b.status === "EXPIRED" && b.quantityAvailable > 0 && !hasPending && !isWO;
+        }
+        return true;
+      });
+    }
+    return list;
+  }, [batches, searchQuery, actionFilter, writtenOffIds, returnsByBatch]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -575,12 +605,28 @@ export default function BatchesPage() {
             setStatusFilter(e.target.value as StatusFilterOption)
           }
           className={selectCls}
-          title="Filter by status"
+          title="Filter by expiry status"
         >
-          <option value="all">All Statuses</option>
+          <option value="all">All Expiry Statuses</option>
           <option value="expired">Expired</option>
           <option value="near">Near Expiry</option>
           <option value="ok">Active / Safe</option>
+        </select>
+
+        {/* Action / Settlement Filter */}
+        <select
+          value={actionFilter}
+          onChange={(e) =>
+            setActionFilter(e.target.value as ActionFilterOption)
+          }
+          className={selectCls}
+          title="Filter by return or write-off status"
+        >
+          <option value="all">All Settlements & Actions</option>
+          <option value="action_needed">Action Needed (Expired with Stock)</option>
+          <option value="pending_return">Return Pending</option>
+          <option value="completed_return">Return Completed</option>
+          <option value="written_off">Written Off</option>
         </select>
 
         {/* Near Expiry Window selector */}
@@ -598,15 +644,33 @@ export default function BatchesPage() {
           <option value={365}>Near expiry: 365 days</option>
         </select>
 
-        {/* Active status indicator & reset */}
-        {statusFilter !== "all" && (
-          <button
-            onClick={() => setStatusFilter("all")}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition-colors shrink-0"
-          >
-            <span>Filtering: <strong className="capitalize">{statusFilter === "near" ? "Near Expiry" : statusFilter === "ok" ? "Active" : statusFilter}</strong></span>
-            <X className="w-3.5 h-3.5 text-slate-500" />
-          </button>
+        {/* Active status indicators & reset */}
+        {(statusFilter !== "all" || actionFilter !== "all") && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {statusFilter !== "all" && (
+              <button
+                onClick={() => setStatusFilter("all")}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition-colors shrink-0"
+              >
+                <span>Expiry: <strong className="capitalize">{statusFilter === "near" ? "Near Expiry" : statusFilter === "ok" ? "Active" : statusFilter}</strong></span>
+                <X className="w-3.5 h-3.5 text-slate-500" />
+              </button>
+            )}
+            {actionFilter !== "all" && (
+              <button
+                onClick={() => setActionFilter("all")}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition-colors shrink-0"
+              >
+                <span>Action: <strong className="capitalize">{
+                  actionFilter === "action_needed" ? "Action Needed" :
+                  actionFilter === "pending_return" ? "Return Pending" :
+                  actionFilter === "completed_return" ? "Return Completed" :
+                  "Written Off"
+                }</strong></span>
+                <X className="w-3.5 h-3.5 text-slate-500" />
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -739,34 +803,77 @@ export default function BatchesPage() {
 
                       {/* Return / write-off status */}
                       <td className="py-3 px-4">
-                        <div className="flex flex-col gap-1 items-start">
-                          {isWrittenOff && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-800 px-2.5 py-1 text-xs font-semibold text-white">
-                              <Trash2 className="w-3 h-3" />
-                              Written Off
-                            </span>
-                          )}
-                          {pendingCount > 0 && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                              Return Pending{pendingCount > 1 ? ` (${pendingCount})` : ""}
-                            </span>
-                          )}
-                          {completed.map((r) => (
-                            <span
-                              key={r.id}
-                              className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
-                            >
-                              <CheckCircle2 className="w-3 h-3" />
-                              {r.resolutionType === "MONEY"
-                                ? `Money Returned · ${rs(Number(r.resolutionAmount ?? 0))}`
-                                : "Stock Replaced"}
-                            </span>
-                          ))}
-                          {!isWrittenOff && batchReturns.length === 0 && (
-                            <span className="text-xs text-slate-300">—</span>
-                          )}
-                        </div>
+                        {(() => {
+                          const wo = writeOffByBatch.get(b.batchId);
+                          const bReturns = returnsByBatch[b.batchId] ?? [];
+                          const pending = bReturns.filter((r) => r.status === "PENDING");
+                          const completed = bReturns.filter((r) => r.status === "COMPLETED");
+                          const pendingQty = pending.reduce((sum, r) => sum + r.quantity, 0);
+                          const completedQty = completed.reduce((sum, r) => sum + r.quantity, 0);
+
+                          if (wo) {
+                            return (
+                              <div className="flex flex-col gap-0.5 items-start">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 border border-rose-200/90 px-2.5 py-0.5 text-xs font-semibold text-rose-700 shadow-2xs">
+                                  <Trash2 className="w-3 h-3 text-rose-600 shrink-0" />
+                                  Written Off
+                                </span>
+                                <span className="text-[11px] font-medium text-slate-500 pl-1">
+                                  {wo.quantity} {b.unit} · <span className="text-rose-600 font-semibold">{rs(Number(wo.totalLoss))} loss</span>
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          if (pending.length > 0) {
+                            return (
+                              <div className="flex flex-col gap-0.5 items-start">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-800 shadow-2xs">
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                  </span>
+                                  Return Pending
+                                </span>
+                                <span className="text-[11px] font-medium text-amber-900/80 pl-1">
+                                  {pendingQty} {b.unit} with supplier
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          if (completed.length > 0) {
+                            return (
+                              <div className="flex flex-col gap-0.5 items-start">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 shadow-2xs">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  Returned ({completedQty} {b.unit})
+                                </span>
+                                <span className="text-[11px] font-medium text-slate-500 pl-1">
+                                  {completed[0]?.resolutionType === "MONEY"
+                                    ? `Settled: ${rs(completed.reduce((sum, r) => sum + Number(r.resolutionAmount || 0), 0))}`
+                                    : "Stock Replaced"}
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          if (b.status === "EXPIRED" && b.quantityAvailable > 0) {
+                            return (
+                              <div className="flex flex-col gap-0.5 items-start">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-100/70 border border-amber-300/80 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                                  <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                  Action Needed
+                                </span>
+                                <span className="text-[10px] text-slate-500 pl-1">
+                                  Return or Write Off
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return <span className="text-xs text-slate-300 font-mono">—</span>;
+                        })()}
                       </td>
 
                       <td className="py-3 px-4">
@@ -941,14 +1048,40 @@ export default function BatchesPage() {
 
                   {/* Already written off */}
                   {batchWriteOff && (
-                    <div className="flex items-start gap-2.5 rounded-xl bg-slate-100 p-3.5 text-slate-700 border border-slate-300">
-                      <Trash2 className="h-4 w-4 mt-0.5 shrink-0 text-slate-600" />
-                      <div className="text-xs">
-                        <strong className="font-semibold block text-sm">
-                          Written off
-                        </strong>
-                        {batchWriteOff.quantity} {selectedBatch.unit} removed ·
-                        loss {rs(Number(batchWriteOff.totalLoss))}
+                    <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
+                            <Trash2 className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-rose-950">Inventory Written Off</h4>
+                            <p className="text-[11px] text-rose-700">
+                              Disposed and booked as financial expense loss under Inventory Write-off
+                            </p>
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-rose-100 border border-rose-300 px-2.5 py-0.5 text-xs font-bold text-rose-800">
+                          Recorded Loss
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2.5 border-t border-rose-200/60 text-xs">
+                        <div>
+                          <span className="text-slate-500 block text-[10px] uppercase font-semibold">Quantity Removed</span>
+                          <span className="font-bold text-slate-800 text-sm">{batchWriteOff.quantity} {selectedBatch.unit}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px] uppercase font-semibold">Total Loss</span>
+                          <span className="font-bold text-rose-600 text-sm">{rs(Number(batchWriteOff.totalLoss))}</span>
+                        </div>
+                        {batchWriteOff.createdAt && (
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase font-semibold">Date Written Off</span>
+                            <span className="font-semibold text-slate-700 text-xs mt-0.5 block">
+                              {new Date(batchWriteOff.createdAt).toISOString().slice(0, 10)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -958,160 +1091,187 @@ export default function BatchesPage() {
                   {/* -------------------------------------------------- */}
                   {batchReturns.length > 0 && (
                     <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <RotateCcw className="w-4 h-4 text-[#044d73]" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                          Returns on this batch
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <RotateCcw className="w-4 h-4 text-[#044d73]" />
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                            Purchase Returns & Debit Notes
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-slate-500">
+                          {batchReturns.length} {batchReturns.length === 1 ? "Record" : "Records"}
                         </span>
                       </div>
 
-                      {batchReturns.map((r) => (
-                        <div
-                          key={r.id}
-                          className={`rounded-lg border p-3 space-y-3 ${
-                            r.status === "PENDING"
-                              ? "border-amber-200 bg-amber-50/50"
-                              : "border-emerald-200 bg-emerald-50/40"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3 flex-wrap">
-                            <div className="text-xs text-slate-600">
-                              <span className="font-bold text-slate-800">
-                                {r.quantity} {selectedBatch.unit}
-                              </span>{" "}
-                              sent back on {r.returnDate}
-                              {r.reason ? ` · ${r.reason}` : ""}
-                              <div className="text-[11px] text-slate-400 mt-0.5">
-                                Supplier: {r.partyName ?? "—"}
-                                {r.status === "COMPLETED" &&
-                                  ` · ${
-                                    r.resolutionType === "MONEY"
-                                      ? `money returned ${rs(Number(r.resolutionAmount ?? 0))}`
-                                      : "stock replaced"
-                                  }`}
+                      <div className="space-y-3">
+                        {batchReturns.map((r) => {
+                          const isPending = r.status === "PENDING";
+                          return (
+                            <div
+                              key={r.id}
+                              className={`rounded-xl border p-4 space-y-3 transition-colors ${
+                                isPending
+                                  ? "border-amber-200 bg-amber-50/50"
+                                  : "border-emerald-200 bg-emerald-50/40"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3 flex-wrap">
+                                <div className="space-y-1.5 flex-1 min-w-[200px]">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-bold text-slate-900">
+                                      {r.quantity} {selectedBatch.unit} Returned
+                                    </span>
+                                    {isPending ? (
+                                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                                        <span className="relative flex h-2 w-2">
+                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                        </span>
+                                        Pending Settlement
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                        Completed / Settled
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                                    <span>Return Date: <strong className="text-slate-800">{r.returnDate}</strong></span>
+                                    {r.partyName && (
+                                      <span>Supplier: <strong className="text-slate-800">{r.partyName}</strong></span>
+                                    )}
+                                    {r.reason && (
+                                      <span>Reason: <span className="text-slate-700 italic">"{r.reason}"</span></span>
+                                    )}
+                                  </div>
+                                  {!isPending && (
+                                    <div className="inline-flex items-center gap-1.5 mt-1 rounded-md bg-emerald-100/90 border border-emerald-300/80 px-2.5 py-1 text-xs font-medium text-emerald-800">
+                                      <strong>Resolution:</strong>{" "}
+                                      {r.resolutionType === "MONEY"
+                                        ? `Refund / Debit Note Settled · ${rs(Number(r.resolutionAmount ?? 0))}`
+                                        : "Replacement stock received into batch"}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {isPending && completingId !== r.id && (
+                                  <button
+                                    onClick={() => {
+                                      setPanel("none");
+                                      setCompletingId(r.id);
+                                      setResolution("MONEY");
+                                      setAmount(String(r.quantity * (selectedBatch.purchasePrice || 0)));
+                                      setNewExpiry("");
+                                      setActionError("");
+                                    }}
+                                    className="rounded-lg bg-[#044d73] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#033a57] shadow-xs transition-colors shrink-0"
+                                  >
+                                    Settle Return
+                                  </button>
+                                )}
                               </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {r.status === "PENDING" ? (
-                                <>
-                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                    Pending
-                                  </span>
-                                  {completingId !== r.id && (
+
+                              {/* Manual completion — ask what the supplier gave back */}
+                              {completingId === r.id && (
+                                <div className="space-y-3.5 border-t border-amber-200/80 pt-3.5 bg-white p-3.5 rounded-lg border border-slate-200">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs font-bold text-slate-800">
+                                      How was this return settled by {r.partyName || "supplier"}?
+                                    </p>
+                                    <span className="text-[11px] text-slate-500">
+                                      {r.quantity} {selectedBatch.unit}
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {(["MONEY", "QUANTITY"] as const).map((t) => (
+                                      <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => setResolution(t)}
+                                        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-all ${
+                                          resolution === t
+                                            ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73] shadow-xs"
+                                            : "border-slate-200 bg-slate-50 hover:bg-white text-slate-600"
+                                        }`}
+                                      >
+                                        {t === "MONEY" ? "Credit Note / Refund" : "Replacement Stock"}
+                                      </button>
+                                    ))}
+                                  </div>
+
+                                  {resolution === "MONEY" ? (
+                                    <div>
+                                      <label className="text-xs font-semibold text-slate-600 block mb-1">
+                                        Settlement Amount (Rs.)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={amount}
+                                        onChange={(e) => setAmount(e.target.value)}
+                                        placeholder={`Default: ${r.quantity * (selectedBatch.purchasePrice || 0)}`}
+                                        className={inputCls}
+                                      />
+                                      <p className="text-[11px] text-slate-500 mt-1">
+                                        Default is purchase cost: {r.quantity} × {rs(selectedBatch.purchasePrice)} = {rs(r.quantity * (selectedBatch.purchasePrice || 0))}.
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      <p className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                        <strong>{r.quantity} {selectedBatch.unit}</strong> will be added back to batch{" "}
+                                        <strong>#{selectedBatch.batchNumber}</strong> with a fresh expiry date.
+                                      </p>
+                                      <div>
+                                        <label className="text-xs font-semibold text-slate-600 block mb-1">
+                                          New Expiry Date of Replacement Stock
+                                        </label>
+                                        <input
+                                          type="date"
+                                          min={tomorrow()}
+                                          value={newExpiry}
+                                          onChange={(e) => setNewExpiry(e.target.value)}
+                                          className={inputCls}
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {actionError && (
+                                    <p className="text-xs text-red-600 font-medium">{actionError}</p>
+                                  )}
+
+                                  <div className="flex justify-end gap-2 pt-1">
                                     <button
+                                      type="button"
                                       onClick={() => {
-                                        setPanel("none");
-                                        setCompletingId(r.id);
-                                        setResolution("MONEY");
-                                        setAmount("");
-                                        setNewExpiry("");
+                                        setCompletingId(null);
                                         setActionError("");
                                       }}
-                                      className="rounded-lg bg-[#044d73] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#033a57]"
+                                      className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors"
                                     >
-                                      Mark Completed
+                                      Cancel
                                     </button>
-                                  )}
-                                </>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  {r.resolutionType === "MONEY" ? "Money Returned" : "Stock Replaced"}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Manual completion — ask what the supplier gave back */}
-                          {completingId === r.id && (
-                            <div className="space-y-3 border-t border-amber-100 pt-3">
-                              <p className="text-xs font-medium text-slate-600">
-                                What did the supplier give back?
-                              </p>
-                              <div className="flex gap-2">
-                                {(["MONEY", "QUANTITY"] as const).map((t) => (
-                                  <button
-                                    key={t}
-                                    onClick={() => setResolution(t)}
-                                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${
-                                      resolution === t
-                                        ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]"
-                                        : "border-slate-200 bg-white text-slate-600"
-                                    }`}
-                                  >
-                                    {t === "MONEY" ? "Money" : "Replacement stock"}
-                                  </button>
-                                ))}
-                              </div>
-
-                              {resolution === "MONEY" ? (
-                                <div>
-                                  <label className="text-xs font-medium text-slate-500">
-                                    Amount (leave empty to use quantity × purchase price)
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={amount}
-                                    onChange={(e) => setAmount(e.target.value)}
-                                    className={inputCls}
-                                  />
-                                </div>
-                              ) : (
-                                <div className="space-y-2">
-                                  <p className="text-xs text-slate-600">
-                                    <strong>
-                                      {r.quantity} {selectedBatch.unit}
-                                    </strong>{" "}
-                                    will be added back to batch{" "}
-                                    <strong>#{selectedBatch.batchNumber}</strong>.
-                                  </p>
-                                  <div>
-                                    <label className="text-xs font-medium text-slate-500">
-                                      New expiry date of the replacement stock
-                                    </label>
-                                    <input
-                                      type="date"
-                                      min={tomorrow()}
-                                      value={newExpiry}
-                                      onChange={(e) => setNewExpiry(e.target.value)}
-                                      className={inputCls}
-                                    />
+                                    <button
+                                      type="button"
+                                      onClick={submitComplete}
+                                      disabled={
+                                        saving ||
+                                        (resolution === "QUANTITY" &&
+                                          (!newExpiry || newExpiry < tomorrow()))
+                                      }
+                                      className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-40"
+                                    >
+                                      {saving ? "Saving..." : "Confirm Settlement"}
+                                    </button>
                                   </div>
                                 </div>
                               )}
-
-                              {actionError && (
-                                <p className="text-xs text-red-600">{actionError}</p>
-                              )}
-
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  onClick={() => {
-                                    setCompletingId(null);
-                                    setActionError("");
-                                  }}
-                                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={submitComplete}
-                                  disabled={
-                                    saving ||
-                                    (resolution === "QUANTITY" &&
-                                      (!newExpiry || newExpiry < tomorrow()))
-                                  }
-                                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
-                                >
-                                  {saving ? "Saving..." : "Complete return"}
-                                </button>
-                              </div>
                             </div>
-                          )}
-                        </div>
-                      ))}
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 
@@ -1119,17 +1279,20 @@ export default function BatchesPage() {
                   {/* Return form                                         */}
                   {/* -------------------------------------------------- */}
                   {panel === "return" && (
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                        Return to supplier
-                      </span>
-                      <p className="text-xs text-slate-500">
-                        The stock leaves the shelf now and the return stays{" "}
-                        <strong>Pending</strong> until you mark it completed by hand.
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <RotateCcw className="w-4 h-4 text-amber-700" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                          Return to Supplier (Purchase Return / Debit Note)
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-800">
+                        This stock will be deducted from your inventory and tracked as a Debit Note against the supplier.
+                        <strong> This is not a business loss</strong> because the supplier owes you a refund or replacement.
                       </p>
                       <div>
-                        <label className="text-xs font-medium text-slate-500">
-                          Quantity (max {selectedBatch.quantityAvailable})
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                          Quantity to Return (Max {selectedBatch.quantityAvailable} {selectedBatch.unit})
                         </label>
                         <input
                           type="number"
@@ -1141,36 +1304,39 @@ export default function BatchesPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-slate-500">
-                          Reason (optional)
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                          Reason (Optional, e.g. Expired / Damaged / Near Expiry)
                         </label>
                         <input
+                          placeholder="e.g. Expired batch return for credit note"
                           value={returnReason}
                           onChange={(e) => setReturnReason(e.target.value)}
                           className={inputCls}
                         />
                       </div>
-                      {actionError && <p className="text-xs text-red-600">{actionError}</p>}
-                      <div className="flex justify-end gap-2">
+                      {actionError && <p className="text-xs text-red-600 font-medium">{actionError}</p>}
+                      <div className="flex justify-end gap-2 pt-1">
                         <button
+                          type="button"
                           onClick={() => {
                             setPanel("none");
                             setActionError("");
                           }}
-                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium"
+                          className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors"
                         >
                           Cancel
                         </button>
                         <button
+                          type="button"
                           onClick={submitReturn}
                           disabled={
                             saving ||
                             !Number(returnQty) ||
                             Number(returnQty) > selectedBatch.quantityAvailable
                           }
-                          className="rounded-lg bg-[#044d73] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                          className="rounded-lg bg-[#044d73] hover:bg-[#033a57] px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-40"
                         >
-                          {saving ? "Saving..." : "Create return"}
+                          {saving ? "Saving..." : "Create Return"}
                         </button>
                       </div>
                     </div>
@@ -1180,35 +1346,41 @@ export default function BatchesPage() {
                   {/* Write-off confirm                                   */}
                   {/* -------------------------------------------------- */}
                   {panel === "writeoff" && (
-                    <div className="rounded-xl border border-red-200 bg-red-50/60 p-4 space-y-3">
-                      <span className="text-xs font-bold uppercase tracking-wider text-red-800">
-                        Write off expired stock
-                      </span>
-                      <p className="text-xs text-red-900">
+                    <div className="rounded-xl border border-red-200 bg-red-50/70 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Trash2 className="w-4 h-4 text-red-600" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-red-900">
+                          Write Off Expired Stock (Inventory Loss)
+                        </span>
+                      </div>
+                      <p className="text-xs text-red-900 leading-relaxed">
                         All{" "}
                         <strong>
                           {selectedBatch.quantityAvailable} {selectedBatch.unit}
                         </strong>{" "}
-                        left on this batch will be removed from stock and booked as a loss of{" "}
-                        <strong>{rs(selectedBatch.valueAtRisk)}</strong>. This cannot be undone.
+                        left on this batch will be completely removed from shelf stock and recorded as an accounting financial loss of{" "}
+                        <strong className="text-red-700">{rs(selectedBatch.valueAtRisk)}</strong> under <em>Inventory Write-off</em> expenses.
+                        This cannot be undone.
                       </p>
-                      {actionError && <p className="text-xs text-red-600">{actionError}</p>}
-                      <div className="flex justify-end gap-2">
+                      {actionError && <p className="text-xs text-red-600 font-medium">{actionError}</p>}
+                      <div className="flex justify-end gap-2 pt-1">
                         <button
+                          type="button"
                           onClick={() => {
                             setPanel("none");
                             setActionError("");
                           }}
-                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium"
+                          className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-1.5 text-xs font-medium text-slate-700 transition-colors"
                         >
                           Cancel
                         </button>
                         <button
+                          type="button"
                           onClick={submitWriteOff}
                           disabled={saving}
-                          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                          className="rounded-lg bg-red-600 hover:bg-red-700 px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-40"
                         >
-                          {saving ? "Writing off..." : "Write off everything"}
+                          {saving ? "Writing off..." : "Confirm Write Off"}
                         </button>
                       </div>
                     </div>
@@ -1252,8 +1424,7 @@ export default function BatchesPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500">Supplier</span>
                       <span className="font-semibold text-slate-800">
-                        {selectedBatch.partyName ||
-                          "Not linked to a supplier"}
+                        {selectedBatch.partyName || "Not linked to a supplier"}
                       </span>
                     </div>
                     {extra?.manufacturingDate && (
@@ -1302,25 +1473,67 @@ export default function BatchesPage() {
                     </div>
                   </div>
 
-                  {selectedBatch.status === "EXPIRED" && (
-                    <div className="flex items-start gap-2.5 rounded-xl bg-red-50 p-3.5 text-red-800 border border-red-200">
-                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-600" />
-                      <div>
-                        <strong className="font-semibold block text-sm">
-                          Batch is Expired
-                        </strong>
+                  {/* Contextual Action Prompt for Expired Batches */}
+                  {selectedBatch.status === "EXPIRED" && selectedBatch.quantityAvailable > 0 && !batchWriteOff && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-amber-50 border border-amber-200/90 p-4 text-amber-950">
+                      <div className="flex items-start gap-2.5">
+                        <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0 text-amber-600" />
+                        <div>
+                          <strong className="font-bold block text-sm">Expired Stock on Shelf</strong>
+                          <p className="text-xs text-amber-800 mt-0.5">
+                            {selectedBatch.quantityAvailable} {selectedBatch.unit} expired. Return it to the supplier for credit/replacement (no loss) or write it off.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActionError("");
+                            setCompletingId(null);
+                            setReturnQty(String(selectedBatch.quantityAvailable));
+                            setPanel(panel === "return" ? "none" : "return");
+                          }}
+                          className="rounded-lg border border-amber-300 bg-white hover:bg-amber-100/60 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-2xs transition-colors"
+                        >
+                          Return to Supplier
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActionError("");
+                            setCompletingId(null);
+                            setPanel(panel === "writeoff" ? "none" : "writeoff");
+                          }}
+                          className="rounded-lg bg-red-600 hover:bg-red-700 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs transition-colors"
+                        >
+                          Write Off
+                        </button>
                       </div>
                     </div>
                   )}
 
-                  {selectedBatch.status === "NEAR_EXPIRY" && (
-                    <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 p-3.5 text-amber-800 border border-amber-200">
+                  {selectedBatch.status === "NEAR_EXPIRY" && selectedBatch.quantityAvailable > 0 && (
+                    <div className="flex items-start gap-2.5 rounded-xl bg-amber-50/80 p-3.5 text-amber-800 border border-amber-200">
                       <Clock className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
                       <div>
                         <strong className="font-semibold block text-sm">
-                          Expiring Soon
+                          Expiring Soon ({selectedBatch.daysLeft} days remaining)
                         </strong>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Consider dispensing first or initiating an early return to the supplier before expiry.
+                        </p>
                       </div>
+                    </div>
+                  )}
+
+                  {selectedBatch.quantityAvailable === 0 && (
+                    <div className="flex items-center gap-2.5 rounded-xl bg-slate-50 border border-slate-200 p-3.5 text-slate-600 text-xs">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>
+                        This batch has <strong>0 available stock</strong> on shelf{" "}
+                        {batchWriteOff ? "(written off as loss)" : batchReturns.length > 0 ? "(returned to supplier or dispensed)" : "(fully sold/dispensed)"}.
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1329,13 +1542,14 @@ export default function BatchesPage() {
                 <div className="shrink-0 flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4">
                   {selectedBatch.quantityAvailable > 0 && (
                     <button
+                      type="button"
                       onClick={() => {
                         setActionError("");
                         setCompletingId(null);
                         setReturnQty(String(selectedBatch.quantityAvailable));
                         setPanel(panel === "return" ? "none" : "return");
                       }}
-                      className="flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-50"
+                      className="flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50 shadow-2xs transition-colors"
                     >
                       <RotateCcw className="w-4 h-4" />
                       Return to Supplier
@@ -1345,12 +1559,13 @@ export default function BatchesPage() {
                   {selectedBatch.status === "EXPIRED" &&
                     selectedBatch.quantityAvailable > 0 && (
                       <button
+                        type="button"
                         onClick={() => {
                           setActionError("");
                           setCompletingId(null);
                           setPanel(panel === "writeoff" ? "none" : "writeoff");
                         }}
-                        className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                        className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 shadow-2xs transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                         Write Off
@@ -1358,8 +1573,9 @@ export default function BatchesPage() {
                     )}
 
                   <button
+                    type="button"
                     onClick={closeModal}
-                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
                   >
                     Close
                   </button>

@@ -265,9 +265,7 @@ export default function AddAccountPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-800">Existing Accounts</h2>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-[#044d73] border border-sky-100">
-                  {pagination.total} Total
-                </span>
+
               </div>
             </div>
           </div>
@@ -599,11 +597,10 @@ export default function AddAccountPage() {
                         placeholder="Re-enter password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className={`w-full rounded-lg border pl-9 pr-9 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-all ${
-                          passwordsMismatch
+                        className={`w-full rounded-lg border pl-9 pr-9 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-all ${passwordsMismatch
                             ? "border-rose-300 focus:ring-rose-500"
                             : "border-slate-200 focus:ring-[#044d73] focus:border-transparent"
-                        }`}
+                          }`}
                       />
                       <button
                         type="button"

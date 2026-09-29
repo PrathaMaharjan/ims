@@ -142,16 +142,20 @@ export async function getInventoryStatus(organizationId: string): Promise<Invent
     .from(products)
     .where(eq(products.organizationId, organizationId));
  
+  // In-stock batches of the active items above that are already expired or
+  // expire within NEAR_EXPIRY_DAYS — expired stock still on the shelf counts,
+  // same batches the Critical Stock & Expiry Watchlist lists.
   const [batchRow] = await db
     .select({
       expiringCount: sql<string>`count(*)`,
     })
     .from(batches)
+    .innerJoin(products, eq(batches.productId, products.id))
     .where(
       and(
         eq(batches.organizationId, organizationId),
+        eq(products.isActive, true),
         sql`${batches.quantityAvailable} > 0`,
-        sql`${batches.expiryDate} >= CURRENT_DATE`,
         sql`${batches.expiryDate} <= CURRENT_DATE + ${NEAR_EXPIRY_DAYS}::int`,
       ),
     );
@@ -244,6 +248,12 @@ function daysUntil(expiryDate: string): number {
 
 // Recent Transactions
 
+
+// "Recent" means most recently entered, so rows are ordered by createdAt.
+// The business dates (saleDate, purchaseDate, expenseDate) only carry a day,
+// so sorting by them ties everything entered on the same day and lets a
+// backdated entry hide from the list. The business date is still returned
+// as `date` for display.
 export async function getRecentTransactions(organizationId: string, limit = 10) {
   const [saleRows, purchaseRows, expenseRows] = await Promise.all([
     db
@@ -252,42 +262,54 @@ export async function getRecentTransactions(organizationId: string, limit = 10) 
         invoiceNumber: sales.invoiceNumber,
         amount: sales.grandTotal,
         date: sales.saleDate,
+        createdAt: sales.createdAt,
         paymentType: sales.paymentType,
         partyName: parties.name,
       })
       .from(sales)
       .leftJoin(parties, eq(sales.partyId, parties.id))
       .where(eq(sales.organizationId, organizationId))
-      .orderBy(desc(sales.saleDate))
+      .orderBy(desc(sales.createdAt))
       .limit(limit),
- 
+
     db
       .select({
         id: purchases.id,
         supplierInvoiceNumber: purchases.supplierInvoiceNumber,
         amount: purchases.grandTotal,
         date: purchases.purchaseDate,
+        createdAt: purchases.createdAt,
         paymentType: purchases.paymentType,
         partyName: parties.name,
       })
       .from(purchases)
       .innerJoin(parties, eq(purchases.partyId, parties.id))
       .where(eq(purchases.organizationId, organizationId))
-      .orderBy(desc(purchases.purchaseDate))
+      .orderBy(desc(purchases.createdAt))
       .limit(limit),
- 
+
+    // Every purchase also writes an 'Inventory' expense (see createPurchase),
+    // so those are left out here — the purchase row above already covers
+    // that money. Same split as getDashboardStats. `is distinct from` keeps
+    // expenses with no category, which `!=` would silently drop.
     db
       .select({
         id: expenses.id,
         amount: expenses.amount,
         date: expenses.expenseDate,
+        createdAt: expenses.createdAt,
         description: expenses.description,
         categoryName: expenseCategories.name,
       })
       .from(expenses)
       .leftJoin(expenseCategories, eq(expenses.categoryId, expenseCategories.id))
-      .where(eq(expenses.organizationId, organizationId))
-      .orderBy(desc(expenses.expenseDate))
+      .where(
+        and(
+          eq(expenses.organizationId, organizationId),
+          sql`${expenseCategories.name} is distinct from 'Inventory'`,
+        ),
+      )
+      .orderBy(desc(expenses.createdAt))
       .limit(limit),
   ]);
  
@@ -299,6 +321,7 @@ export async function getRecentTransactions(organizationId: string, limit = 10) 
       partyName: r.partyName ?? "Walk-in Patient",
       amount: r.amount,
       date: r.date,
+      createdAt: r.createdAt,
       paymentType: r.paymentType,
     })),
     ...purchaseRows.map((r) => ({
@@ -308,6 +331,7 @@ export async function getRecentTransactions(organizationId: string, limit = 10) 
       partyName: r.partyName,
       amount: r.amount,
       date: r.date,
+      createdAt: r.createdAt,
       paymentType: r.paymentType,
     })),
     ...expenseRows.map((r) => ({
@@ -317,11 +341,12 @@ export async function getRecentTransactions(organizationId: string, limit = 10) 
       partyName: r.description ?? r.categoryName ?? "Expense",
       amount: r.amount,
       date: r.date,
+      createdAt: r.createdAt,
       paymentType: null,
     })),
   ];
  
-  merged.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  merged.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
  
   return merged.slice(0, limit);
 }

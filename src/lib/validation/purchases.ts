@@ -66,6 +66,11 @@ export type UpdatePurchaseItemInput = z.infer<
 // change only the payment status of a purchase
 export const updatePurchasePaymentStatusSchema = z.object({
   paymentStatus: z.enum(["UNPAID", "PARTIAL", "PAID"]),
+  amount: z.number().positive().optional(),
+  method: z.string().optional(),
+  referenceNumber: z.string().optional(),
+  notes: z.string().optional(),
+  paymentDate: z.string().optional(),
 });
 
 export type UpdatePurchasePaymentStatusInput = z.infer<

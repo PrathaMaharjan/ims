@@ -4,7 +4,8 @@ import { sales } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getAuth } from "@/lib/auth/require-auth";
 import { updateSaleSchema } from "@/lib/validation/sales";
-import { deleteSale, updateSale } from "@/controller/sales/controller";
+import { deleteSale } from "@/controller/sales/controller";
+import { updateSale } from "@/controller/sales/batchesWIse/conteoller";
 
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

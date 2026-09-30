@@ -3,6 +3,7 @@ import { allocateFefo, calculateSaleTotals } from "./helper";
 import {
   batches,
   organizations,
+  payments,
   products,
   saleItems,
   sales,
@@ -435,13 +436,22 @@ export async function getSaleStats(organizationId: string) {
   };
 }
 
-// change the payment  
 // change only the payment status of a sale (UNPAID / PARTIAL / PAID)
 export async function updateSalePaymentStatus(
   organizationId: string,
   saleId: string,
   input: UpdateSalePaymentStatusInput,
+  userId?: string,
 ) {
+  const existingSale = await db.query.sales.findFirst({
+    where: and(eq(sales.id, saleId), eq(sales.organizationId, organizationId)),
+    columns: { id: true, invoiceNumber: true, partyId: true, grandTotal: true },
+  });
+
+  if (!existingSale) {
+    throw new Error("Sale not found");
+  }
+
   const [updated] = await db
     .update(sales)
     .set({ paymentStatus: input.paymentStatus })
@@ -460,6 +470,23 @@ export async function updateSalePaymentStatus(
 
   if (!updated) {
     throw new Error("Sale not found");
+  }
+
+  // If a payment amount is provided (e.g. for PARTIAL or PAID), record into payments table
+  if (input.amount && input.amount > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    await db.insert(payments).values({
+      organizationId,
+      direction: "RECEIVED_FROM_CUSTOMER",
+      saleId: existingSale.id,
+      partyId: existingSale.partyId,
+      amount: input.amount.toFixed(2),
+      paymentDate: input.paymentDate || today,
+      method: input.method || "CASH",
+      referenceNumber: input.referenceNumber || null,
+      notes: input.notes || `Partial payment for invoice SAL-${String(existingSale.invoiceNumber).padStart(4, "0")}`,
+      createdByUserId: userId || null,
+    });
   }
 
   return updated;

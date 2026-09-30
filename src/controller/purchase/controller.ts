@@ -10,6 +10,7 @@ import {
   batches,
   products,
   expenses,
+  payments,
 } from "../../db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { invalidateCache } from "@/lib/cache";
@@ -711,7 +712,17 @@ export async function updatePurchasePaymentStatus(
   organizationId: string,
   purchaseId: string,
   input: UpdatePurchasePaymentStatusInput,
+  userId?: string,
 ) {
+  const existingPurchase = await db.query.purchases.findFirst({
+    where: and(eq(purchases.id, purchaseId), eq(purchases.organizationId, organizationId)),
+    columns: { id: true, supplierInvoiceNumber: true, partyId: true, grandTotal: true },
+  });
+
+  if (!existingPurchase) {
+    throw new Error("Purchase not found");
+  }
+
   const [updated] = await db
     .update(purchases)
     .set({ paymentStatus: input.paymentStatus })
@@ -729,6 +740,23 @@ export async function updatePurchasePaymentStatus(
 
   if (!updated) {
     throw new Error("Purchase not found");
+  }
+
+  // If a payment amount is provided (e.g. for PARTIAL or PAID), record into payments table
+  if (input.amount && input.amount > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    await db.insert(payments).values({
+      organizationId,
+      direction: "PAID_TO_SUPPLIER",
+      purchaseId: existingPurchase.id,
+      partyId: existingPurchase.partyId,
+      amount: input.amount.toFixed(2),
+      paymentDate: input.paymentDate || today,
+      method: input.method || "CASH",
+      referenceNumber: input.referenceNumber || null,
+      notes: input.notes || `Partial payment for purchase invoice ${existingPurchase.supplierInvoiceNumber || existingPurchase.id.slice(0, 6)}`,
+      createdByUserId: userId || null,
+    });
   }
 
   return updated;

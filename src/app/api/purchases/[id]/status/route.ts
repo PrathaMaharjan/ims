@@ -28,6 +28,7 @@ export async function PATCH(
       auth.organizationId,
       id,
       parsed.data,
+      auth.userId,
     );
     return NextResponse.json({ purchase });
   } catch (error) {

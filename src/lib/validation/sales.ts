@@ -53,6 +53,11 @@ export type ListSalesQuery = z.infer<typeof listSalesQuerySchema>;
 
 export const updateSalePaymentStatusSchema = z.object({
   paymentStatus: z.enum(["UNPAID", "PARTIAL", "PAID"]),
+  amount: z.number().positive().optional(),
+  method: z.string().optional(),
+  referenceNumber: z.string().optional(),
+  notes: z.string().optional(),
+  paymentDate: z.string().optional(),
 });
 
 export type UpdateSalePaymentStatusInput = z.infer<

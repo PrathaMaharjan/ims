@@ -10,6 +10,7 @@ import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 import { DotsLoader } from "../_components/ui/dots-loader";
 import { TaxInvoiceModal, TaxInvoiceData, InvoiceItem } from "../_components/TaxInvoiceModal";
+import { PartialPaymentModal } from "../_components/PartialPaymentModal";
 
 /* ------------------------------------------------------------------ */
 /* Types — matches the real backend shapes                             */
@@ -597,6 +598,12 @@ export default function PurchasePage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [partialModalTarget, setPartialModalTarget] = useState<{
+    id: string;
+    invoiceNumber: string;
+    partyName?: string;
+    totalAmount: number;
+  } | null>(null);
 
   /* ---- initial catalog load: products + suppliers, in parallel ---- */
 
@@ -1079,6 +1086,19 @@ function buildPayload() {
   }
 
   async function handleStatusChange(purchaseId: string, newStatus: PaymentStatus) {
+    if (newStatus === "PARTIAL") {
+      const purchase = purchases.find((p) => p.id === purchaseId) ?? (viewingPurchase?.id === purchaseId ? viewingPurchase : null);
+      if (purchase) {
+        setPartialModalTarget({
+          id: purchase.id,
+          invoiceNumber: purchase.supplierInvoiceNumber || `PUR-${purchase.id.slice(0, 6)}`,
+          partyName: purchase.party?.name,
+          totalAmount: parseFloat(purchase.grandTotal) || 0,
+        });
+        return;
+      }
+    }
+
     const previous = purchases.find((item) => item.id === purchaseId)?.paymentStatus;
 
     // update the UI first so the dropdown feels instant
@@ -1095,6 +1115,31 @@ function buildPayload() {
       alert(err?.response?.data?.error ?? "Failed to update payment status.");
     } finally {
       setStatusUpdatingId(null);
+    }
+  }
+
+  async function handleConfirmPartialPayment(data: {
+    amount: number;
+    method: string;
+    paymentDate: string;
+    referenceNumber?: string;
+    notes?: string;
+  }) {
+    if (!partialModalTarget) return;
+    const purchaseId = partialModalTarget.id;
+    setStatusUpdatingId(purchaseId);
+    try {
+      await api.patch(`/api/purchases/${purchaseId}/status`, {
+        paymentStatus: "PARTIAL",
+        ...data,
+      });
+      setPurchases((prev) => prev.map((item) => (item.id === purchaseId ? { ...item, paymentStatus: "PARTIAL" } : item)));
+      setViewingPurchase((prev) => (prev?.id === purchaseId ? { ...prev, paymentStatus: "PARTIAL" } : prev));
+    } catch (err: any) {
+      alert(err?.response?.data?.error ?? "Failed to record partial payment.");
+    } finally {
+      setStatusUpdatingId(null);
+      setPartialModalTarget(null);
     }
   }
 
@@ -2118,6 +2163,20 @@ function buildPayload() {
         <TaxInvoiceModal
           data={printInvoiceData}
           onClose={() => setPrintInvoiceData(null)}
+        />
+      )}
+
+      {/* Partial Payment Modal */}
+      {partialModalTarget && (
+        <PartialPaymentModal
+          isOpen={!!partialModalTarget}
+          onClose={() => setPartialModalTarget(null)}
+          invoiceId={partialModalTarget.id}
+          invoiceNumber={partialModalTarget.invoiceNumber}
+          partyName={partialModalTarget.partyName}
+          totalAmount={partialModalTarget.totalAmount}
+          direction="SUPPLIER"
+          onConfirm={handleConfirmPartialPayment}
         />
       )}
     </div>

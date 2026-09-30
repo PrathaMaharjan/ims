@@ -22,7 +22,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// If a request fails with 401 (expired access token), try refreshing once,
 // then retry the original request. If refresh also fails, give up and
 // let the error propagate (AuthProvider will treat this as logged-out).
 let refreshPromise: Promise<string> | null = null;

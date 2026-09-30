@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/forgot-password"];
+// Public for everyone, logged in or not (exact match only).
+const PUBLIC_EXACT = ["/"];
+
+// Auth pages: public, but a logged-in user gets sent to the app.
+const AUTH_PATHS = ["/login", "/forgot-password"];
+
+function matchesPath(pathname: string, path: string) {
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
+  const isAuthPage = AUTH_PATHS.some((p) => matchesPath(pathname, p));
+  const isPublicPath = PUBLIC_EXACT.includes(pathname) || isAuthPage;
+
   // refreshToken itself is scoped to path "/api/auth" and is never visible here;
   // isLoggedIn is the non-sensitive marker cookie set alongside it for this check.
   const isLoggedIn = req.cookies.get("isLoggedIn")?.value === "1";
@@ -14,7 +24,7 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  if (isLoggedIn && isPublicPath) {
+  if (isLoggedIn && isAuthPage) {
     return NextResponse.redirect(new URL("/pharma", req.url));
   }
 

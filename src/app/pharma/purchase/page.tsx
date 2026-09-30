@@ -596,6 +596,7 @@ export default function PurchasePage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
 
   /* ---- initial catalog load: products + suppliers, in parallel ---- */
 
@@ -1077,6 +1078,26 @@ function buildPayload() {
     }
   }
 
+  async function handleStatusChange(purchaseId: string, newStatus: PaymentStatus) {
+    const previous = purchases.find((item) => item.id === purchaseId)?.paymentStatus;
+
+    // update the UI first so the dropdown feels instant
+    setPurchases((prev) => prev.map((item) => (item.id === purchaseId ? { ...item, paymentStatus: newStatus } : item)));
+    setViewingPurchase((prev) => (prev?.id === purchaseId ? { ...prev, paymentStatus: newStatus } : prev));
+
+    setStatusUpdatingId(purchaseId);
+    try {
+      await api.patch(`/api/purchases/${purchaseId}/status`, { paymentStatus: newStatus });
+    } catch (err: any) {
+      // roll back if the server rejected it
+      setPurchases((prev) => prev.map((item) => (item.id === purchaseId ? { ...item, paymentStatus: previous } : item)));
+      setViewingPurchase((prev) => (prev?.id === purchaseId ? { ...prev, paymentStatus: previous } : prev));
+      alert(err?.response?.data?.error ?? "Failed to update payment status.");
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
@@ -1325,16 +1346,13 @@ function buildPayload() {
                     <td className="py-3 px-4">
                       <select
                         value={currentStatus}
+                        disabled={statusUpdatingId === p.id}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => {
                           e.stopPropagation();
-                          const newStatus = e.target.value as PaymentStatus;
-                          setPurchases((prev) => prev.map((item) => (item.id === p.id ? { ...item, paymentStatus: newStatus } : item)));
-                          if (viewingPurchase?.id === p.id) {
-                            setViewingPurchase((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
-                          }
+                          handleStatusChange(p.id, e.target.value as PaymentStatus);
                         }}
-                        className={`cursor-pointer text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${
+                        className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${
                           PAYMENT_STATUS_STYLES[currentStatus]?.badge
                         }`}
                       >
@@ -1484,12 +1502,9 @@ function buildPayload() {
                     </span>
                     <select
                       value={viewingPurchase.paymentStatus ?? (viewingPurchase.paymentType === "CREDIT" ? "UNPAID" : "PAID")}
-                      onChange={(e) => {
-                        const newStatus = e.target.value as PaymentStatus;
-                        setViewingPurchase((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
-                        setPurchases((prev) => prev.map((item) => (item.id === viewingPurchase.id ? { ...item, paymentStatus: newStatus } : item)));
-                      }}
-                      className={`cursor-pointer text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${
+                      disabled={statusUpdatingId === viewingPurchase.id}
+                      onChange={(e) => handleStatusChange(viewingPurchase.id, e.target.value as PaymentStatus)}
+                      className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${
                         PAYMENT_STATUS_STYLES[viewingPurchase.paymentStatus ?? (viewingPurchase.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"
                       }`}
                     >
@@ -1689,7 +1704,7 @@ function buildPayload() {
                         <option value="MOBILE_PAYMENT">Mobile Payment</option>
                       </select>
                     </Field>
-                    <Field label="Payment Status">
+                    {/* <Field label="Payment Status">
                       <select
                         value={form.paymentStatus}
                         onChange={e => setForm(p => ({ ...p, paymentStatus: e.target.value as PaymentStatus }))}
@@ -1699,7 +1714,7 @@ function buildPayload() {
                         <option value="PARTIAL">Partial</option>
                         <option value="UNPAID">Unpaid</option>
                       </select>
-                    </Field>
+                    </Field> */}
                     <Field label="Purc Type" hint="VAT treatment for this purchase">
                       <select
                         value={form.purcType}

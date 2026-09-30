@@ -50,3 +50,11 @@ export const listSalesQuerySchema = z.object({
 });
 
 export type ListSalesQuery = z.infer<typeof listSalesQuerySchema>;
+
+export const updateSalePaymentStatusSchema = z.object({
+  paymentStatus: z.enum(["UNPAID", "PARTIAL", "PAID"]),
+});
+
+export type UpdateSalePaymentStatusInput = z.infer<
+  typeof updateSalePaymentStatusSchema
+>;

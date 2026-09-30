@@ -664,6 +664,7 @@ export default function SalesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
 
   /* ---- initial catalog load: products + customers, in parallel ---- */
 
@@ -1127,6 +1128,26 @@ export default function SalesPage() {
     }
   }
 
+  async function handleStatusChange(saleId: string, newStatus: PaymentStatus) {
+    const previous = sales.find((item) => item.id === saleId)?.paymentStatus;
+
+    // update the UI first so the dropdown feels instant
+    setSales((prev) => prev.map((item) => (item.id === saleId ? { ...item, paymentStatus: newStatus } : item)));
+    setViewingSale((prev) => (prev?.id === saleId ? { ...prev, paymentStatus: newStatus } : prev));
+
+    setStatusUpdatingId(saleId);
+    try {
+      await api.patch(`/api/sales/${saleId}/status`, { paymentStatus: newStatus });
+    } catch (err: any) {
+      // roll back if the server rejected it
+      setSales((prev) => prev.map((item) => (item.id === saleId ? { ...item, paymentStatus: previous } : item)));
+      setViewingSale((prev) => (prev?.id === saleId ? { ...prev, paymentStatus: previous } : prev));
+      alert(err?.response?.data?.error ?? "Failed to update payment status.");
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  }
+
   async function handleDelete(id: string) {
     setDeleting(true);
     setDeleteError(null);
@@ -1287,16 +1308,13 @@ export default function SalesPage() {
                     <td className="py-3 px-4">
                       <select
                         value={currentStatus}
+                        disabled={statusUpdatingId === s.id}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => {
                           e.stopPropagation();
-                          const newStatus = e.target.value as PaymentStatus;
-                          setSales((prev) => prev.map((item) => (item.id === s.id ? { ...item, paymentStatus: newStatus } : item)));
-                          if (viewingSale?.id === s.id) {
-                            setViewingSale((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
-                          }
+                          handleStatusChange(s.id, e.target.value as PaymentStatus);
                         }}
-                        className={`cursor-pointer text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${
+                        className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${
                           PAYMENT_STATUS_STYLES[currentStatus]?.badge
                         }`}
                       >
@@ -1418,12 +1436,9 @@ export default function SalesPage() {
                     </span>
                     <select
                       value={viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")}
-                      onChange={(e) => {
-                        const newStatus = e.target.value as PaymentStatus;
-                        setViewingSale((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
-                        setSales((prev) => prev.map((item) => (item.id === viewingSale.id ? { ...item, paymentStatus: newStatus } : item)));
-                      }}
-                      className={`cursor-pointer text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${
+                      disabled={statusUpdatingId === viewingSale.id}
+                      onChange={(e) => handleStatusChange(viewingSale.id, e.target.value as PaymentStatus)}
+                      className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${
                         PAYMENT_STATUS_STYLES[viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"
                       }`}
                     >
@@ -1460,12 +1475,9 @@ export default function SalesPage() {
                   <span className="text-slate-400 block font-medium uppercase text-[10px]">Payment Status</span>
                   <select
                     value={viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")}
-                    onChange={(e) => {
-                      const newStatus = e.target.value as PaymentStatus;
-                      setViewingSale((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
-                      setSales((prev) => prev.map((item) => (item.id === viewingSale.id ? { ...item, paymentStatus: newStatus } : item)));
-                    }}
-                    className={`cursor-pointer text-xs font-bold rounded-lg px-2 py-1 border mt-0.5 outline-none block w-full ${
+                    disabled={statusUpdatingId === viewingSale.id}
+                    onChange={(e) => handleStatusChange(viewingSale.id, e.target.value as PaymentStatus)}
+                    className={`cursor-pointer disabled:opacity-50 text-xs font-bold rounded-lg px-2 py-1 border mt-0.5 outline-none block w-full ${
                       PAYMENT_STATUS_STYLES[viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.badge
                     }`}
                   >

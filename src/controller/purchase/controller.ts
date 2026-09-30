@@ -1,6 +1,7 @@
 import {
   CreatePurchaseInput,
   UpdatePurchaseInput,
+  UpdatePurchasePaymentStatusInput,
 } from "@/lib/validation/purchases";
 import { db } from "../../db";
 import {
@@ -702,4 +703,33 @@ export async function updatePurchase(
     console.error("updatePurchase failed partway through:", error);
     throw error;
   }
+}
+
+// change status
+// change only the payment status of a purchase (UNPAID / PARTIAL / PAID)
+export async function updatePurchasePaymentStatus(
+  organizationId: string,
+  purchaseId: string,
+  input: UpdatePurchasePaymentStatusInput,
+) {
+  const [updated] = await db
+    .update(purchases)
+    .set({ paymentStatus: input.paymentStatus })
+    .where(
+      and(
+        eq(purchases.id, purchaseId),
+        eq(purchases.organizationId, organizationId),
+      ),
+    )
+    .returning({
+      id: purchases.id,
+      paymentStatus: purchases.paymentStatus,
+      grandTotal: purchases.grandTotal,
+    });
+
+  if (!updated) {
+    throw new Error("Purchase not found");
+  }
+
+  return updated;
 }

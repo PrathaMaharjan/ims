@@ -15,7 +15,61 @@ import { TaxInvoiceModal, TaxInvoiceData, InvoiceItem } from "../_components/Tax
 /* ------------------------------------------------------------------ */
 
 type Num = number | "";
-type PaymentType = "CASH" | "CREDIT";
+type PaymentType = "CASH" | "CREDIT" | "BANK_TRANSFER" | "CHEQUE" | "MOBILE_PAYMENT";
+
+const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  CASH: "Cash",
+  CREDIT: "Credit",
+  BANK_TRANSFER: "Bank Transfer",
+  CHEQUE: "Cheque",
+  MOBILE_PAYMENT: "Mobile Payment",
+};
+
+const PAYMENT_TYPE_STYLES: Record<PaymentType, { badge: string; viewBadge: string }> = {
+  CASH: {
+    badge: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    viewBadge: "bg-emerald-400/20 border-emerald-300 text-emerald-100",
+  },
+  CREDIT: {
+    badge: "bg-amber-50 border-amber-200 text-amber-700",
+    viewBadge: "bg-amber-400/20 border-amber-300 text-amber-100",
+  },
+  BANK_TRANSFER: {
+    badge: "bg-blue-50 border-blue-200 text-blue-700",
+    viewBadge: "bg-blue-400/20 border-blue-300 text-blue-100",
+  },
+  CHEQUE: {
+    badge: "bg-purple-50 border-purple-200 text-purple-700",
+    viewBadge: "bg-purple-400/20 border-purple-300 text-purple-100",
+  },
+  MOBILE_PAYMENT: {
+    badge: "bg-indigo-50 border-indigo-200 text-indigo-700",
+    viewBadge: "bg-indigo-400/20 border-indigo-300 text-indigo-100",
+  },
+};
+type PaymentStatus = "PAID" | "UNPAID" | "PARTIAL";
+
+const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  PAID: "Paid",
+  PARTIAL: "Partial",
+  UNPAID: "Unpaid",
+};
+
+const PAYMENT_STATUS_STYLES: Record<PaymentStatus, { badge: string; viewBadge: string }> = {
+  PAID: {
+    badge: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    viewBadge: "bg-emerald-400/20 border-emerald-300 text-emerald-100",
+  },
+  PARTIAL: {
+    badge: "bg-amber-50 border-amber-200 text-amber-700",
+    viewBadge: "bg-amber-400/20 border-amber-300 text-amber-100",
+  },
+  UNPAID: {
+    badge: "bg-rose-50 border-rose-200 text-rose-700",
+    viewBadge: "bg-rose-400/20 border-rose-300 text-rose-100",
+  },
+};
+
 type RoundingDirection = "UP" | "DOWN";
 type DiscountType = "Percentage" | "Flat";
 
@@ -82,6 +136,7 @@ interface DiscountRowForm {
 interface SaleForm {
   date: string;
   paymentType: PaymentType;
+  paymentStatus: PaymentStatus;
   vatRate: Num;
   roundingDirection: RoundingDirection;
   partyId: string;
@@ -97,6 +152,7 @@ interface SaleRecord {
   invoiceNumber: number;
   saleDate: string;
   paymentType: PaymentType;
+  paymentStatus?: PaymentStatus;
   roundingDirection: RoundingDirection;
   partyId: string | null;
   subtotal: string;
@@ -177,6 +233,7 @@ function emptyForm(): SaleForm {
   return {
     date: todayISO(),
     paymentType: "CASH",
+    paymentStatus: "PAID",
     vatRate: 13,
     roundingDirection: "DOWN",
     partyId: "",
@@ -593,6 +650,7 @@ export default function SalesPage() {
 
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<"ALL" | PaymentType>("ALL");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<"ALL" | PaymentStatus>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -665,13 +723,13 @@ export default function SalesPage() {
         totalCount -= 1;
         totalRevenue -= Number(prev.grandTotal);
         if (prev.paymentType === "CASH") { cashCount -= 1; cashRevenue -= Number(prev.grandTotal); }
-        else { creditCount -= 1; creditRevenue -= Number(prev.grandTotal); }
+        else if (prev.paymentType === "CREDIT") { creditCount -= 1; creditRevenue -= Number(prev.grandTotal); }
       }
       if (next) {
         totalCount += 1;
         totalRevenue += Number(next.grandTotal);
         if (next.paymentType === "CASH") { cashCount += 1; cashRevenue += Number(next.grandTotal); }
-        else { creditCount += 1; creditRevenue += Number(next.grandTotal); }
+        else if (next.paymentType === "CREDIT") { creditCount += 1; creditRevenue += Number(next.grandTotal); }
       }
       return { totalCount, totalRevenue, cashCount, cashRevenue, creditCount, creditRevenue };
     });
@@ -691,7 +749,12 @@ export default function SalesPage() {
     })
     : sales;
 
-  const visibleSales = paymentFilter === "ALL" ? filteredSales : filteredSales.filter((s) => s.paymentType === paymentFilter);
+  const visibleSales = filteredSales.filter((s) => {
+    if (paymentFilter !== "ALL" && s.paymentType !== paymentFilter) return false;
+    const status = s.paymentStatus ?? (s.paymentType === "CREDIT" ? "UNPAID" : "PAID");
+    if (paymentStatusFilter !== "ALL" && status !== paymentStatusFilter) return false;
+    return true;
+  });
 
   const [showNewCustomerInline, setShowNewCustomerInline] = useState(false);
   const [inlineCust, setInlineCust] = useState({ name: "", phone: "", email: "", address: "" });
@@ -841,6 +904,7 @@ export default function SalesPage() {
     setForm({
       date: record.saleDate.slice(0, 10),
       paymentType: record.paymentType,
+      paymentStatus: record.paymentStatus ?? (record.paymentType === "CREDIT" ? "UNPAID" : "PAID"),
       vatRate: 13, // not persisted per-sale, same known limitation as purchases
       roundingDirection: record.roundingDirection,
       partyId: record.party?.id ?? "",
@@ -1038,14 +1102,14 @@ export default function SalesPage() {
       if (editingSaleId) {
         await api.patch(`/api/sales/${editingSaleId}`, payload);
         const refreshed = await api.get(`/api/sales/${editingSaleId}`);
-        const updated: SaleRecord = refreshed.data.sale;
+        const updated: SaleRecord = { ...refreshed.data.sale, paymentStatus: form.paymentStatus };
         const original = sales.find((s) => s.id === editingSaleId) ?? null;
         applyStatsDelta(original, updated);
         setSales((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       } else {
         const created = await api.post("/api/sales", payload);
         const fullSale = await api.get(`/api/sales/${created.data.saleId}`);
-        const newSale: SaleRecord = fullSale.data.sale;
+        const newSale: SaleRecord = { ...fullSale.data.sale, paymentStatus: form.paymentStatus };
         applyStatsDelta(null, newSale);
         if (currentPage === 1 && paymentFilter === "ALL" && !search) {
           setSales((prev) => [newSale, ...prev].slice(0, PAGE_LIMIT));
@@ -1167,8 +1231,22 @@ export default function SalesPage() {
           className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
         >
           <option value="ALL">All Payment Types</option>
-          <option value="CASH">Cash Sales</option>
-          <option value="CREDIT">Credit Sales</option>
+          <option value="CASH">Cash</option>
+          <option value="CREDIT">Credit</option>
+          <option value="BANK_TRANSFER">Bank Transfer</option>
+          <option value="CHEQUE">Cheque</option>
+          <option value="MOBILE_PAYMENT">Mobile Payment</option>
+        </select>
+
+        <select
+          value={paymentStatusFilter}
+          onChange={(e) => setPaymentStatusFilter(e.target.value as typeof paymentStatusFilter)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
+        >
+          <option value="ALL">All Payment Statuses</option>
+          <option value="PAID">Paid</option>
+          <option value="PARTIAL">Partial</option>
+          <option value="UNPAID">Unpaid</option>
         </select>
       </div>
 
@@ -1181,6 +1259,7 @@ export default function SalesPage() {
                 <th className="py-3 px-4">Date</th>
                 <th className="py-3 px-4">Invoice No.</th>
                 <th className="py-3 px-4">Payment</th>
+                <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Customer</th>
                 <th className="py-3 px-4">Items & Dispensed Batches</th>
                 <th className="py-3 px-4">Total Qty</th>
@@ -1190,20 +1269,41 @@ export default function SalesPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loadingSales ? (
-                <tr><td colSpan={8} className="py-16 text-center text-sm text-slate-400">Loading sales...</td></tr>
+                <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">Loading sales...</td></tr>
               ) : visibleSales.length === 0 ? (
-                <tr><td colSpan={8} className="py-16 text-center text-sm text-slate-400">No sales vouchers match criteria.</td></tr>
+                <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">No sales vouchers match criteria.</td></tr>
               ) : visibleSales.map((s) => {
                 const totalQty = s.items.reduce((acc, li) => acc + li.quantity, 0);
+                const currentStatus: PaymentStatus = s.paymentStatus ?? (s.paymentType === "CREDIT" ? "UNPAID" : "PAID");
                 return (
                   <tr key={s.id} onClick={() => setViewingSale(s)} className="hover:bg-slate-50/80 transition-colors text-slate-700 cursor-pointer group">
                     <td className="py-3 px-4 text-slate-500">{s.saleDate.slice(0, 10)}</td>
                     <td className="py-3 px-4 font-semibold text-slate-800 group-hover:text-[#044d73] transition-colors">{invoiceLabel(s.invoiceNumber)}</td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold border ${s.paymentType === "CASH" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"
-                        }`}>
-                        {s.paymentType === "CASH" ? "Cash" : "Credit"}
+                      <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold border ${PAYMENT_TYPE_STYLES[s.paymentType]?.badge ?? "bg-slate-50 border-slate-200 text-slate-700"}`}>
+                        {PAYMENT_TYPE_LABELS[s.paymentType] ?? s.paymentType}
                       </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <select
+                        value={currentStatus}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          const newStatus = e.target.value as PaymentStatus;
+                          setSales((prev) => prev.map((item) => (item.id === s.id ? { ...item, paymentStatus: newStatus } : item)));
+                          if (viewingSale?.id === s.id) {
+                            setViewingSale((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
+                          }
+                        }}
+                        className={`cursor-pointer text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${
+                          PAYMENT_STATUS_STYLES[currentStatus]?.badge
+                        }`}
+                      >
+                        <option value="PAID">Paid</option>
+                        <option value="PARTIAL">Partial</option>
+                        <option value="UNPAID">Unpaid</option>
+                      </select>
                     </td>
                     <td className="py-3 px-4">
                       {s.party?.name ? (
@@ -1313,10 +1413,24 @@ export default function SalesPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-semibold">{invoiceLabel(viewingSale.invoiceNumber)}</h3>
-                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold border ${viewingSale.paymentType === "CASH" ? "bg-emerald-400/20 border-emerald-300 text-emerald-100" : "bg-amber-400/20 border-amber-300 text-amber-100"
-                      }`}>
-                      {viewingSale.paymentType === "CASH" ? "Cash" : "Credit"}
+                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold border ${PAYMENT_TYPE_STYLES[viewingSale.paymentType]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"}`}>
+                      {PAYMENT_TYPE_LABELS[viewingSale.paymentType] ?? viewingSale.paymentType}
                     </span>
+                    <select
+                      value={viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")}
+                      onChange={(e) => {
+                        const newStatus = e.target.value as PaymentStatus;
+                        setViewingSale((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
+                        setSales((prev) => prev.map((item) => (item.id === viewingSale.id ? { ...item, paymentStatus: newStatus } : item)));
+                      }}
+                      className={`cursor-pointer text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${
+                        PAYMENT_STATUS_STYLES[viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"
+                      }`}
+                    >
+                      <option value="PAID" className="text-slate-900 bg-white">Paid</option>
+                      <option value="PARTIAL" className="text-slate-900 bg-white">Partial</option>
+                      <option value="UNPAID" className="text-slate-900 bg-white">Unpaid</option>
+                    </select>
                   </div>
                   <p className="text-xs text-white/70 mt-0.5">Date: {viewingSale.saleDate.slice(0, 10)} · Customer: {viewingSale.party?.name || "Walk-in Cash Customer"}</p>
                 </div>
@@ -1325,7 +1439,7 @@ export default function SalesPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
                 <div>
                   <span className="text-slate-400 block font-medium uppercase text-[10px]">Voucher No</span>
                   <span className="font-semibold text-slate-800 text-sm mt-0.5 block">{invoiceLabel(viewingSale.invoiceNumber)}</span>
@@ -1340,7 +1454,25 @@ export default function SalesPage() {
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium uppercase text-[10px]">Payment Type</span>
-                  <span className="font-semibold text-slate-800 text-sm mt-0.5 block">{viewingSale.paymentType === "CASH" ? "Cash" : "Credit"}</span>
+                  <span className="font-semibold text-slate-800 text-sm mt-0.5 block">{PAYMENT_TYPE_LABELS[viewingSale.paymentType] ?? viewingSale.paymentType}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block font-medium uppercase text-[10px]">Payment Status</span>
+                  <select
+                    value={viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")}
+                    onChange={(e) => {
+                      const newStatus = e.target.value as PaymentStatus;
+                      setViewingSale((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
+                      setSales((prev) => prev.map((item) => (item.id === viewingSale.id ? { ...item, paymentStatus: newStatus } : item)));
+                    }}
+                    className={`cursor-pointer text-xs font-bold rounded-lg px-2 py-1 border mt-0.5 outline-none block w-full ${
+                      PAYMENT_STATUS_STYLES[viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.badge
+                    }`}
+                  >
+                    <option value="PAID">Paid</option>
+                    <option value="PARTIAL">Partial</option>
+                    <option value="UNPAID">Unpaid</option>
+                  </select>
                 </div>
               </div>
 
@@ -1459,14 +1591,39 @@ export default function SalesPage() {
                 {saveError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600 font-medium">{saveError}</div>}
 
                 <Section title="Voucher & Customer" icon={<ShoppingCart className="w-3.5 h-3.5" />}>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <Field label="Date">
                       <input type="date" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} className={inputCls} />
                     </Field>
                     <Field label="Payment Type">
-                      <select value={form.paymentType} onChange={(e) => setForm((p) => ({ ...p, paymentType: e.target.value as PaymentType }))} className={inputCls}>
+                      <select
+                        value={form.paymentType}
+                        onChange={(e) => {
+                          const pt = e.target.value as PaymentType;
+                          setForm((p) => ({
+                            ...p,
+                            paymentType: pt,
+                            paymentStatus: pt === "CREDIT" ? "UNPAID" : "PAID",
+                          }));
+                        }}
+                        className={inputCls}
+                      >
                         <option value="CASH">Cash</option>
                         <option value="CREDIT">Credit</option>
+                        <option value="BANK_TRANSFER">Bank Transfer</option>
+                        <option value="CHEQUE">Cheque</option>
+                        <option value="MOBILE_PAYMENT">Mobile Payment</option>
+                      </select>
+                    </Field>
+                    <Field label="Payment Status">
+                      <select
+                        value={form.paymentStatus}
+                        onChange={(e) => setForm((p) => ({ ...p, paymentStatus: e.target.value as PaymentStatus }))}
+                        className={inputCls}
+                      >
+                        <option value="PAID">Paid</option>
+                        <option value="PARTIAL">Partial</option>
+                        <option value="UNPAID">Unpaid</option>
                       </select>
                     </Field>
                     <Field label="VAT Rate (%)">

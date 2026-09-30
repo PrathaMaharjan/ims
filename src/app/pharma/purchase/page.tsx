@@ -16,7 +16,61 @@ import { TaxInvoiceModal, TaxInvoiceData, InvoiceItem } from "../_components/Tax
 /* ------------------------------------------------------------------ */
 
 type Num = number | "";
-type PaymentType = "CASH" | "CREDIT";
+type PaymentType = "CASH" | "CREDIT" | "BANK_TRANSFER" | "CHEQUE" | "MOBILE_PAYMENT";
+
+const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  CASH: "Cash",
+  CREDIT: "Credit",
+  BANK_TRANSFER: "Bank Transfer",
+  CHEQUE: "Cheque",
+  MOBILE_PAYMENT: "Mobile Payment",
+};
+
+const PAYMENT_TYPE_STYLES: Record<PaymentType, { badge: string; viewBadge: string }> = {
+  CASH: {
+    badge: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    viewBadge: "bg-emerald-400/20 border-emerald-300 text-emerald-100",
+  },
+  CREDIT: {
+    badge: "bg-amber-50 border-amber-200 text-amber-700",
+    viewBadge: "bg-amber-400/20 border-amber-300 text-amber-100",
+  },
+  BANK_TRANSFER: {
+    badge: "bg-blue-50 border-blue-200 text-blue-700",
+    viewBadge: "bg-blue-400/20 border-blue-300 text-blue-100",
+  },
+  CHEQUE: {
+    badge: "bg-purple-50 border-purple-200 text-purple-700",
+    viewBadge: "bg-purple-400/20 border-purple-300 text-purple-100",
+  },
+  MOBILE_PAYMENT: {
+    badge: "bg-indigo-50 border-indigo-200 text-indigo-700",
+    viewBadge: "bg-indigo-400/20 border-indigo-300 text-indigo-100",
+  },
+};
+type PaymentStatus = "PAID" | "UNPAID" | "PARTIAL";
+
+const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  PAID: "Paid",
+  PARTIAL: "Partial",
+  UNPAID: "Unpaid",
+};
+
+const PAYMENT_STATUS_STYLES: Record<PaymentStatus, { badge: string; viewBadge: string }> = {
+  PAID: {
+    badge: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    viewBadge: "bg-emerald-400/20 border-emerald-300 text-emerald-100",
+  },
+  PARTIAL: {
+    badge: "bg-amber-50 border-amber-200 text-amber-700",
+    viewBadge: "bg-amber-400/20 border-amber-300 text-amber-100",
+  },
+  UNPAID: {
+    badge: "bg-rose-50 border-rose-200 text-rose-700",
+    viewBadge: "bg-rose-400/20 border-rose-300 text-rose-100",
+  },
+};
+
 type PurcType = "VAT_EXEMPT" | "VAT_ITEM_WISE" | "VAT_TAX_INCL";
 type DiscountType = "Percentage" | "Flat";
 type RoundingDirection = "UP" | "DOWN";
@@ -91,6 +145,7 @@ interface PurchaseForm {
   date: string;
   supplierInvoiceNumber: string;
   paymentType: PaymentType;
+  paymentStatus: PaymentStatus;
   purcType: PurcType;
   vatRate: Num;
   partyId: string;
@@ -107,6 +162,7 @@ interface PurchaseRecord {
   createdAt?: string;
   supplierInvoiceNumber: string | null;
   paymentType: PaymentType;
+  paymentStatus?: PaymentStatus;
   purcType: PurcType;
   roundingDirection: RoundingDirection;
   subtotal: string;
@@ -167,6 +223,7 @@ function emptyForm(): PurchaseForm {
     date: todayISO(),
     supplierInvoiceNumber: "",
     paymentType: "CASH",
+    paymentStatus: "PAID",
     purcType: "VAT_EXEMPT",
     vatRate: 13,
     partyId: "",
@@ -518,6 +575,7 @@ export default function PurchasePage() {
   // Search & Filter state
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("ALL");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("ALL");
   const [purcTypeFilter, setPurcTypeFilter] = useState<string>("ALL");
   const [supplierFilter, setSupplierFilter] = useState<string>("ALL");
   const [dateFrom, setDateFrom] = useState<string>("");
@@ -599,6 +657,7 @@ export default function PurchasePage() {
   const isFiltered = Boolean(
     search.trim() ||
     paymentFilter !== "ALL" ||
+    paymentStatusFilter !== "ALL" ||
     purcTypeFilter !== "ALL" ||
     supplierFilter !== "ALL" ||
     dateFrom ||
@@ -608,6 +667,7 @@ export default function PurchasePage() {
   const clearAllFilters = () => {
     setSearch("");
     setPaymentFilter("ALL");
+    setPaymentStatusFilter("ALL");
     setPurcTypeFilter("ALL");
     setSupplierFilter("ALL");
     setDateFrom("");
@@ -620,6 +680,12 @@ export default function PurchasePage() {
       // 1. Payment filter
       if (paymentFilter !== "ALL" && p.paymentType !== paymentFilter) {
         return false;
+      }
+
+      // Payment Status filter
+      if (paymentStatusFilter !== "ALL") {
+        const status = p.paymentStatus ?? (p.paymentType === "CREDIT" ? "UNPAID" : "PAID");
+        if (status !== paymentStatusFilter) return false;
       }
 
       // 2. Purchase type (VAT) filter
@@ -781,6 +847,7 @@ export default function PurchasePage() {
       date: record.purchaseDate,
       supplierInvoiceNumber: record.supplierInvoiceNumber ?? "",
       paymentType: record.paymentType,
+      paymentStatus: record.paymentStatus ?? (record.paymentType === "CREDIT" ? "UNPAID" : "PAID"),
       purcType: record.purcType,
       vatRate: 13,
       partyId: record.party?.id ?? "",
@@ -1096,6 +1163,24 @@ function buildPayload() {
           <option value="ALL">All Payments</option>
           <option value="CASH">Cash</option>
           <option value="CREDIT">Credit</option>
+          <option value="BANK_TRANSFER">Bank Transfer</option>
+          <option value="CHEQUE">Cheque</option>
+          <option value="MOBILE_PAYMENT">Mobile Payment</option>
+        </select>
+
+        {/* Payment Status Filter */}
+        <select
+          value={paymentStatusFilter}
+          onChange={(e) => {
+            setPaymentStatusFilter(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
+        >
+          <option value="ALL">All Payment Statuses</option>
+          <option value="PAID">Paid</option>
+          <option value="PARTIAL">Partial</option>
+          <option value="UNPAID">Unpaid</option>
         </select>
 
         {/* Purc Type Filter */}
@@ -1186,6 +1271,7 @@ function buildPayload() {
                 <th className="py-3 px-4">Date</th>
                 <th className="py-3 px-4">Invoice No.</th>
                 <th className="py-3 px-4">Payment</th>
+                <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Purc Type</th>
                 <th className="py-3 px-4">Supplier</th>
                 <th className="py-3 px-4">Items & Batches</th>
@@ -1196,10 +1282,10 @@ function buildPayload() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loadingPurchases ? (
-                <tr><td colSpan={9} className="py-16"><DotsLoader text="Loading purchases..." size="sm" /></td></tr>
+                <tr><td colSpan={10} className="py-16"><DotsLoader text="Loading purchases..." size="sm" /></td></tr>
               ) : paginatedPurchases.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-sm text-slate-400">
+                  <td colSpan={10} className="py-16 text-center text-sm text-slate-400">
                     {isFiltered ? (
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Receipt className="h-8 w-8 text-slate-300" />
@@ -1220,6 +1306,7 @@ function buildPayload() {
                 </tr>
               ) : paginatedPurchases.map(p => {
                 const totalQty = p.items.reduce((s, li) => s + li.quantity, 0);
+                const currentStatus: PaymentStatus = p.paymentStatus ?? (p.paymentType === "CREDIT" ? "UNPAID" : "PAID");
                 return (
                   <tr
                     key={p.id}
@@ -1231,12 +1318,30 @@ function buildPayload() {
                       {p.supplierInvoiceNumber || "—"}
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold border ${p.paymentType === "CASH"
-                        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                        : "bg-amber-50 border-amber-200 text-amber-700"
-                        }`}>
-                        {p.paymentType === "CASH" ? "Cash" : "Credit"}
+                      <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold border ${PAYMENT_TYPE_STYLES[p.paymentType]?.badge ?? "bg-slate-50 border-slate-200 text-slate-700"}`}>
+                        {PAYMENT_TYPE_LABELS[p.paymentType] ?? p.paymentType}
                       </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <select
+                        value={currentStatus}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          const newStatus = e.target.value as PaymentStatus;
+                          setPurchases((prev) => prev.map((item) => (item.id === p.id ? { ...item, paymentStatus: newStatus } : item)));
+                          if (viewingPurchase?.id === p.id) {
+                            setViewingPurchase((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
+                          }
+                        }}
+                        className={`cursor-pointer text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${
+                          PAYMENT_STATUS_STYLES[currentStatus]?.badge
+                        }`}
+                      >
+                        <option value="PAID">Paid</option>
+                        <option value="PARTIAL">Partial</option>
+                        <option value="UNPAID">Unpaid</option>
+                      </select>
                     </td>
                     <td className="py-3 px-4 text-xs text-slate-500">{PURC_TYPE_LABELS[p.purcType]}</td>
                     <td className="py-3 px-4 text-slate-500">{p.party?.name || "—"}</td>
@@ -1374,12 +1479,24 @@ function buildPayload() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-base sm:text-lg font-semibold truncate">{viewingPurchase.supplierInvoiceNumber || "Purchase"}</h3>
-                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold border ${viewingPurchase.paymentType === "CASH"
-                      ? "bg-emerald-400/20 border-emerald-300 text-emerald-100"
-                      : "bg-amber-400/20 border-amber-300 text-amber-100"
-                      }`}>
-                      {viewingPurchase.paymentType === "CASH" ? "Cash" : "Credit"}
+                    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold border ${PAYMENT_TYPE_STYLES[viewingPurchase.paymentType]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"}`}>
+                      {PAYMENT_TYPE_LABELS[viewingPurchase.paymentType] ?? viewingPurchase.paymentType}
                     </span>
+                    <select
+                      value={viewingPurchase.paymentStatus ?? (viewingPurchase.paymentType === "CREDIT" ? "UNPAID" : "PAID")}
+                      onChange={(e) => {
+                        const newStatus = e.target.value as PaymentStatus;
+                        setViewingPurchase((prev) => (prev ? { ...prev, paymentStatus: newStatus } : null));
+                        setPurchases((prev) => prev.map((item) => (item.id === viewingPurchase.id ? { ...item, paymentStatus: newStatus } : item)));
+                      }}
+                      className={`cursor-pointer text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${
+                        PAYMENT_STATUS_STYLES[viewingPurchase.paymentStatus ?? (viewingPurchase.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"
+                      }`}
+                    >
+                      <option value="PAID" className="text-slate-900 bg-white">Paid</option>
+                      <option value="PARTIAL" className="text-slate-900 bg-white">Partial</option>
+                      <option value="UNPAID" className="text-slate-900 bg-white">Unpaid</option>
+                    </select>
                   </div>
                   <p className="text-xs text-white/70 mt-0.5 break-words">Date: {viewingPurchase.purchaseDate} · Supplier: {viewingPurchase.party?.name || "—"}</p>
                 </div>
@@ -1533,7 +1650,7 @@ function buildPayload() {
                 )}
 
                 <Section title="Purchase Voucher Details" icon={<Receipt className="w-3.5 h-3.5" />}>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="Date">
                       <input
                         type="date"
@@ -1555,11 +1672,32 @@ function buildPayload() {
                     <Field label="Payment Type">
                       <select
                         value={form.paymentType}
-                        onChange={e => setForm(p => ({ ...p, paymentType: e.target.value as PaymentType }))}
+                        onChange={e => {
+                          const pt = e.target.value as PaymentType;
+                          setForm(p => ({
+                            ...p,
+                            paymentType: pt,
+                            paymentStatus: pt === "CREDIT" ? "UNPAID" : "PAID",
+                          }));
+                        }}
                         className={inputCls}
                       >
                         <option value="CASH">Cash</option>
                         <option value="CREDIT">Credit</option>
+                        <option value="BANK_TRANSFER">Bank Transfer</option>
+                        <option value="CHEQUE">Cheque</option>
+                        <option value="MOBILE_PAYMENT">Mobile Payment</option>
+                      </select>
+                    </Field>
+                    <Field label="Payment Status">
+                      <select
+                        value={form.paymentStatus}
+                        onChange={e => setForm(p => ({ ...p, paymentStatus: e.target.value as PaymentStatus }))}
+                        className={inputCls}
+                      >
+                        <option value="PAID">Paid</option>
+                        <option value="PARTIAL">Partial</option>
+                        <option value="UNPAID">Unpaid</option>
                       </select>
                     </Field>
                     <Field label="Purc Type" hint="VAT treatment for this purchase">

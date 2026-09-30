@@ -577,7 +577,6 @@ export default function PurchasePage() {
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("ALL");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("ALL");
-  const [purcTypeFilter, setPurcTypeFilter] = useState<string>("ALL");
   const [supplierFilter, setSupplierFilter] = useState<string>("ALL");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
@@ -666,7 +665,6 @@ export default function PurchasePage() {
     search.trim() ||
     paymentFilter !== "ALL" ||
     paymentStatusFilter !== "ALL" ||
-    purcTypeFilter !== "ALL" ||
     supplierFilter !== "ALL" ||
     dateFrom ||
     dateTo
@@ -676,7 +674,6 @@ export default function PurchasePage() {
     setSearch("");
     setPaymentFilter("ALL");
     setPaymentStatusFilter("ALL");
-    setPurcTypeFilter("ALL");
     setSupplierFilter("ALL");
     setDateFrom("");
     setDateTo("");
@@ -694,11 +691,6 @@ export default function PurchasePage() {
       if (paymentStatusFilter !== "ALL") {
         const status = p.paymentStatus ?? (p.paymentType === "CREDIT" ? "UNPAID" : "PAID");
         if (status !== paymentStatusFilter) return false;
-      }
-
-      // 2. Purchase type (VAT) filter
-      if (purcTypeFilter !== "ALL" && p.purcType !== purcTypeFilter) {
-        return false;
       }
 
       // 3. Supplier filter
@@ -736,7 +728,7 @@ export default function PurchasePage() {
 
       return true;
     });
-  }, [purchases, paymentFilter, purcTypeFilter, supplierFilter, dateFrom, dateTo, search, products]);
+  }, [purchases, paymentFilter, supplierFilter, dateFrom, dateTo, search, products]);
 
   const sortedPurchases = useMemo(() => {
     return [...filteredPurchases].sort((a, b) => {
@@ -1247,21 +1239,6 @@ function buildPayload() {
           <option value="PAID">Paid</option>
           <option value="PARTIAL">Partial</option>
           <option value="UNPAID">Unpaid</option>
-        </select>
-
-        {/* Purc Type Filter */}
-        <select
-          value={purcTypeFilter}
-          onChange={(e) => {
-            setPurcTypeFilter(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none"
-        >
-          <option value="ALL">All Purc Types</option>
-          <option value="VAT_EXEMPT">VAT/Exempt</option>
-          <option value="VAT_ITEM_WISE">VAT/Item-wise</option>
-          <option value="VAT_TAX_INCL">VAT/TaxIncl.</option>
         </select>
 
         {/* Supplier Filter */}

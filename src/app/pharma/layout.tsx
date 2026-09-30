@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from './_components/Sidebar';
+import { DotsLoader } from './_components/ui/dots-loader';
 import { useAuth } from '@/context/auth-context';
 import { api } from '@/lib/api-client';
 
@@ -87,7 +88,7 @@ export default function PharmaLayout({ children }: { children: React.ReactNode }
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-50">
-        <p className="text-sm text-zinc-500">Loading…</p>
+        <DotsLoader size="md" color="bg-[#044d73]" text="Loading..." />
       </div>
     );
   }

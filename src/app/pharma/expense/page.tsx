@@ -274,11 +274,10 @@ const SEARCH_DEBOUNCE_MS = 400;
 const STATS_FETCH_LIMIT = 100;
 
 function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-NP", {
-    style: "currency",
-    currency: "NPR",
+  return `Rs ${new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(amount)}`;
 }
 
 function formatDate(iso: string) {
@@ -1209,7 +1208,7 @@ export default function ExpensesPage() {
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2">
-                  Amount (NPR)
+                 Amount (Rs)
                 </label>
                 <input
                   type="number"

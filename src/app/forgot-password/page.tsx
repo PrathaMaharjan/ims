@@ -291,7 +291,7 @@ export default function ForgotPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#044d73] text-white py-2.5 text-sm font-medium hover:bg-[#053f5e] active:scale-[0.99] disabled:opacity-50 transition-all shadow-sm mt-3"
+                className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-900 px-8 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 cursor-pointer"
               >
                 {loading ? (
                   <>
@@ -309,7 +309,7 @@ export default function ForgotPasswordPage() {
               <div className="pt-2 text-center">
                 <Link
                   href="/login"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[#044d73] transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-zinc-900 transition-colors"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                   Back to Login
@@ -374,7 +374,7 @@ export default function ForgotPasswordPage() {
               <button
                 type="submit"
                 disabled={loading || otp.join('').length !== 6}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#044d73] text-white py-2.5 text-sm font-medium hover:bg-[#053f5e] active:scale-[0.99] disabled:opacity-50 transition-all shadow-sm mt-3"
+                className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-900 px-8 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 cursor-pointer"
               >
                 {loading ? (
                   <>
@@ -405,7 +405,7 @@ export default function ForgotPasswordPage() {
                 <div>
                   <Link
                     href="/login"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[#044d73] transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-zinc-900 transition-colors"
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     Cancel & Return to Login
@@ -475,7 +475,7 @@ export default function ForgotPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#044d73] text-white py-2.5 text-sm font-medium hover:bg-[#053f5e] active:scale-[0.99] disabled:opacity-50 transition-all shadow-sm mt-3"
+                className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-900 px-8 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 cursor-pointer"
               >
                 {loading ? (
                   <>
@@ -509,7 +509,7 @@ export default function ForgotPasswordPage() {
               <button
                 type="button"
                 onClick={() => router.push('/login')}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#044d73] text-white py-2.5 text-sm font-medium hover:bg-[#053f5e] active:scale-[0.99] transition-all shadow-sm"
+                className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-900 px-8 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 cursor-pointer"
               >
                 <span>Go to Login</span>
                 <ArrowRight className="w-4 h-4" />

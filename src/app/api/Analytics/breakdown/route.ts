@@ -17,20 +17,20 @@ export async function GET(req: NextRequest) {
     }
 
     const query = parsed.data;
-    const cacheKey =
-      query.mode === "monthly"
-        ? `analytics:breakdown:${auth.organizationId}:monthly:${query.startMonth}:${query.endMonth}`
-        : `analytics:breakdown:${auth.organizationId}:yearly:${query.startYear}:${query.endYear}`;
+    // const cacheKey =
+    //   query.mode === "monthly"
+    //     ? `analytics:breakdown:${auth.organizationId}:monthly:${query.startMonth}:${query.endMonth}`
+    //     : `analytics:breakdown:${auth.organizationId}:yearly:${query.startYear}:${query.endYear}`;
 
-    const cached = await getCached(cacheKey);
-    if (cached) return NextResponse.json(cached);
+    // const cached = await getCached(cacheKey);
+    // if (cached) return NextResponse.json(cached);
 
     const result =
       query.mode === "monthly"
         ? await getBreakdownMonthly(auth.organizationId, query.startMonth!, query.endMonth!)
         : await getBreakdownYearly(auth.organizationId, query.startYear!, query.endYear!);
 
-    await setCached(cacheKey, result, 60 * 5);
+    // await setCached(cacheKey, result, 60 * 5);
 
     return NextResponse.json(result);
   } catch (error) {

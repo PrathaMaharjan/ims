@@ -481,12 +481,30 @@ export async function completePurchaseReturn(
           ),
         );
 
+      // Which product / batch was returned, so the expense note can say what
+      // was reduced and from which purchase.
+      const returned = await db
+        .select({ productName: products.name, batchNumber: batches.batchNumber })
+        .from(batches)
+        .innerJoin(products, eq(products.id, batches.productId))
+        .where(eq(batches.id, existing.batchId))
+        .then((rows) => rows[0]);
+
+      const returnNote =
+        `Return: ${returned?.productName ?? "Unknown item"}` +
+        `${returned?.batchNumber ? ` (Batch ${returned.batchNumber})` : ""}` +
+        ` × ${existing.quantity} — Rs. ${amount.toFixed(2)} refunded on ${new Date().toISOString().slice(0, 10)}` +
+        ` (${source.invoiceNumber ? `Invoice ${source.invoiceNumber}, ` : ""}purchased ${source.purchaseDate})`;
+
       if (inventoryExpense) {
-        // Lower the Inventory expense the purchase created.
+        // Lower the Inventory expense the purchase created and append what
+        // was returned to its note. Appended in SQL so two returns finishing
+        // together can't overwrite each other's line.
         await db
           .update(expenses)
           .set({
             amount: sql`${expenses.amount} - ${amount.toFixed(2)}::numeric`,
+            note: sql`coalesce(${expenses.note} || E'\n', '') || ${returnNote}`,
           })
           .where(
             and(
@@ -504,6 +522,7 @@ export async function completePurchaseReturn(
           description: source.invoiceNumber
             ? `Purchase return refund (invoice ${source.invoiceNumber})`
             : "Purchase return refund",
+          note: returnNote,
           expenseDate: new Date().toISOString().slice(0, 10),
         });
       }

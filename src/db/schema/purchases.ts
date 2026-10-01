@@ -5,6 +5,7 @@ import { parties } from "./parties";
 import { products } from "./products";
 import { batches } from "./batches";
 import { users } from "./users";
+import { payments } from "./payments";
 import { paymentStatusEnum, purchasePaymentTypeEnum, purcTypeEnum, roundingDirectionEnum } from "./enums";
 
 export const purchases = pgTable("purchases", {
@@ -65,6 +66,7 @@ export const purchasesRelations = relations(purchases, ({ one, many }) => ({
     references: [parties.id],
   }),
   items: many(purchaseItems),
+  payments: many(payments),
 }));
 
 export const purchaseItemsRelations = relations(purchaseItems, ({ one }) => ({

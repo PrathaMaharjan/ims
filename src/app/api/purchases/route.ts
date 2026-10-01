@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
         with: {
           items: true,
           party: { columns: { id: true, name: true } }, // added — no separate fetch needed
+          payments: true,
         },
         orderBy: (table, { desc }) => [desc(table.createdAt)],
         limit,

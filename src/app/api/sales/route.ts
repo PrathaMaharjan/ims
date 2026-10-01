@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
             },
           },
           party: { columns: { id: true, name: true } },
+          payments: true,
         },
         orderBy: (table, { desc }) => [desc(table.invoiceNumber)],
         limit,

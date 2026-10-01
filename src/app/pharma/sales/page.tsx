@@ -174,6 +174,15 @@ interface SaleRecord {
     lineTotal: string;
     batch?: { batchNumber: string; expiryDate: string } | null;
   }>;
+  payments?: Array<{
+    id: string;
+    amount: string | number;
+    paymentDate: string;
+    method?: string | null;
+    referenceNumber?: string | null;
+    notes?: string | null;
+    createdAt?: string;
+  }>;
 }
 
 interface Pagination {
@@ -652,6 +661,7 @@ export default function SalesPage() {
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<"ALL" | PaymentType>("ALL");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<"ALL" | PaymentStatus>("ALL");
+  const [partyFilter, setPartyFilter] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -671,7 +681,31 @@ export default function SalesPage() {
     invoiceNumber: string;
     partyName?: string;
     totalAmount: number;
+    alreadyPaid: number;
+    initialAmount?: number;
+    existingPayments?: Array<any>;
   } | null>(null);
+
+  function getSalePaymentInfo(s: SaleRecord) {
+    const total = parseFloat(s.grandTotal) || 0;
+    const paid = (s.payments ?? []).reduce((sum, p) => sum + (parseFloat(String(p.amount)) || 0), 0);
+    const effectivePaid = s.paymentStatus === "PAID" && paid === 0 ? total : paid;
+    const remaining = s.paymentStatus === "PAID" ? 0 : Math.max(0, total - effectivePaid);
+    return { total, paid: effectivePaid, remaining };
+  }
+
+  function openPaymentModal(sale: SaleRecord, mode: "PARTIAL" | "REMAINING" = "PARTIAL") {
+    const { total, paid, remaining } = getSalePaymentInfo(sale);
+    setPartialModalTarget({
+      id: sale.id,
+      invoiceNumber: invoiceLabel(sale.invoiceNumber),
+      partyName: sale.party?.name,
+      totalAmount: total,
+      alreadyPaid: paid,
+      initialAmount: mode === "REMAINING" ? remaining : (remaining > 0 ? remaining : total),
+      existingPayments: sale.payments,
+    });
+  }
 
   /* ---- initial catalog load: products + customers, in parallel ---- */
 
@@ -761,6 +795,13 @@ export default function SalesPage() {
     if (paymentFilter !== "ALL" && s.paymentType !== paymentFilter) return false;
     const status = s.paymentStatus ?? "UNPAID";
     if (paymentStatusFilter !== "ALL" && status !== paymentStatusFilter) return false;
+    if (partyFilter !== "ALL") {
+      if (partyFilter === "WALK_IN") {
+        if (s.partyId || s.party?.id) return false;
+      } else {
+        if ((s.partyId ?? s.party?.id) !== partyFilter) return false;
+      }
+    }
     return true;
   });
 
@@ -1136,20 +1177,22 @@ export default function SalesPage() {
   }
 
   async function handleStatusChange(saleId: string, newStatus: PaymentStatus) {
+    const sale = sales.find((item) => item.id === saleId) ?? (viewingSale?.id === saleId ? viewingSale : null);
+    if (!sale) return;
+
+    const { remaining } = getSalePaymentInfo(sale);
+
     if (newStatus === "PARTIAL") {
-      const sale = sales.find((item) => item.id === saleId) ?? (viewingSale?.id === saleId ? viewingSale : null);
-      if (sale) {
-        setPartialModalTarget({
-          id: sale.id,
-          invoiceNumber: invoiceLabel(sale.invoiceNumber),
-          partyName: sale.party?.name,
-          totalAmount: parseFloat(sale.grandTotal) || 0,
-        });
-        return;
-      }
+      openPaymentModal(sale, "PARTIAL");
+      return;
     }
 
-    const previous = sales.find((item) => item.id === saleId)?.paymentStatus;
+    if (newStatus === "PAID" && remaining > 0.01) {
+      openPaymentModal(sale, "REMAINING");
+      return;
+    }
+
+    const previous = sale.paymentStatus;
 
     // update the UI first so the dropdown feels instant
     setSales((prev) => prev.map((item) => (item.id === saleId ? { ...item, paymentStatus: newStatus } : item)));
@@ -1157,7 +1200,11 @@ export default function SalesPage() {
 
     setStatusUpdatingId(saleId);
     try {
-      await api.patch(`/api/sales/${saleId}/status`, { paymentStatus: newStatus });
+      const res = await api.patch(`/api/sales/${saleId}/status`, { paymentStatus: newStatus });
+      if (res.data?.sale) {
+        setSales((prev) => prev.map((item) => (item.id === saleId ? { ...item, ...res.data.sale } : item)));
+        setViewingSale((prev) => (prev?.id === saleId ? { ...prev, ...res.data.sale } : prev));
+      }
     } catch (err: any) {
       // roll back if the server rejected it
       setSales((prev) => prev.map((item) => (item.id === saleId ? { ...item, paymentStatus: previous } : item)));
@@ -1179,14 +1226,62 @@ export default function SalesPage() {
     const saleId = partialModalTarget.id;
     setStatusUpdatingId(saleId);
     try {
-      await api.patch(`/api/sales/${saleId}/status`, {
-        paymentStatus: "PARTIAL",
+      const alreadyPaid = partialModalTarget.alreadyPaid || 0;
+      const totalPaid = alreadyPaid + data.amount;
+      const grandTotal = partialModalTarget.totalAmount;
+      const willBePaid = totalPaid >= grandTotal - 0.009;
+      const expectedStatus: PaymentStatus = willBePaid ? "PAID" : "PARTIAL";
+
+      const res = await api.patch(`/api/sales/${saleId}/status`, {
+        paymentStatus: expectedStatus,
         ...data,
       });
-      setSales((prev) => prev.map((item) => (item.id === saleId ? { ...item, paymentStatus: "PARTIAL" } : item)));
-      setViewingSale((prev) => (prev?.id === saleId ? { ...prev, paymentStatus: "PARTIAL" } : prev));
+
+      const updatedSale = res.data?.sale;
+      const newStatus = updatedSale?.paymentStatus ?? expectedStatus;
+      const newPayments = updatedSale?.payments;
+
+      setSales((prev) =>
+        prev.map((item) => {
+          if (item.id !== saleId) return item;
+          return {
+            ...item,
+            paymentStatus: newStatus,
+            payments: newPayments ?? [
+              ...(item.payments ?? []),
+              {
+                id: `pay-${Date.now()}`,
+                amount: data.amount.toFixed(2),
+                paymentDate: data.paymentDate,
+                method: data.method,
+                referenceNumber: data.referenceNumber,
+                notes: data.notes,
+              },
+            ],
+          };
+        }),
+      );
+
+      setViewingSale((prev) => {
+        if (prev?.id !== saleId) return prev;
+        return {
+          ...prev,
+          paymentStatus: newStatus,
+          payments: newPayments ?? [
+            ...(prev.payments ?? []),
+            {
+              id: `pay-${Date.now()}`,
+              amount: data.amount.toFixed(2),
+              paymentDate: data.paymentDate,
+              method: data.method,
+              referenceNumber: data.referenceNumber,
+              notes: data.notes,
+            },
+          ],
+        };
+      });
     } catch (err: any) {
-      alert(err?.response?.data?.error ?? "Failed to record partial payment.");
+      alert(err?.response?.data?.error ?? "Failed to record payment.");
     } finally {
       setStatusUpdatingId(null);
       setPartialModalTarget(null);
@@ -1314,6 +1409,24 @@ export default function SalesPage() {
           <option value="PARTIAL">Partial</option>
           <option value="UNPAID">Unpaid</option>
         </select>
+
+        {/* Party Filter */}
+        <select
+          value={partyFilter}
+          onChange={(e) => {
+            setPartyFilter(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none max-w-[180px] truncate"
+        >
+          <option value="ALL">All Parties</option>
+          <option value="WALK_IN">Walk-in (Cash)</option>
+          {customers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Table */}
@@ -1350,22 +1463,44 @@ export default function SalesPage() {
                         {PAYMENT_TYPE_LABELS[s.paymentType] ?? s.paymentType}
                       </span>
                     </td>
-                    <td className="py-3 px-4">
-                      <select
-                        value={currentStatus}
-                        disabled={statusUpdatingId === s.id}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleStatusChange(s.id, e.target.value as PaymentStatus);
-                        }}
-                        className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${PAYMENT_STATUS_STYLES[currentStatus]?.badge
-                          }`}
-                      >
-                        <option value="PAID">Paid</option>
-                        <option value="PARTIAL">Partial</option>
-                        <option value="UNPAID">Unpaid</option>
-                      </select>
+                    <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-col gap-1 items-start">
+                        <select
+                          value={currentStatus}
+                          disabled={statusUpdatingId === s.id}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleStatusChange(s.id, e.target.value as PaymentStatus);
+                          }}
+                          className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${PAYMENT_STATUS_STYLES[currentStatus]?.badge
+                            }`}
+                        >
+                          <option value="PAID">Paid</option>
+                          <option value="PARTIAL">Partial</option>
+                          <option value="UNPAID">Unpaid</option>
+                        </select>
+                        {(() => {
+                          const payInfo = getSalePaymentInfo(s);
+                          if (currentStatus === "PARTIAL" && payInfo.remaining > 0.01) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openPaymentModal(s, "REMAINING");
+                                }}
+                                className="inline-flex items-center gap-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 text-[10px] font-semibold px-1.5 py-0.5 border border-amber-300 transition-colors"
+                                title={`Paid: Rs. ${payInfo.paid.toFixed(2)} | Due: Rs. ${payInfo.remaining.toFixed(2)}. Click to pay remaining balance.`}
+                              >
+                                <CreditCard className="w-2.5 h-2.5 text-amber-700" />
+                                <span>Pay Rs. {payInfo.remaining.toFixed(2)}</span>
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       {s.party?.name ? (
@@ -1529,6 +1664,90 @@ export default function SalesPage() {
                   </select>
                 </div>
               </div>
+
+              {/* Payment Summary & Settlement Banner */}
+              {(() => {
+                const payInfo = getSalePaymentInfo(viewingSale);
+                return (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-[#044d73] flex items-center gap-1.5">
+                          <Wallet className="w-4 h-4" /> Payment Status & Balance
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-4 mt-1.5 text-xs">
+                          <span className="text-slate-600">
+                            Total Bill: <strong className="text-slate-800 font-mono">Rs. {payInfo.total.toFixed(2)}</strong>
+                          </span>
+                          <span className="text-slate-600">
+                            Paid: <strong className="text-emerald-700 font-mono">Rs. {payInfo.paid.toFixed(2)}</strong>
+                          </span>
+                          <span className="text-slate-600">
+                            Balance Due:{" "}
+                            <strong className={`font-mono ${payInfo.remaining > 0.01 ? "text-amber-800 font-bold" : "text-emerald-700 font-bold"}`}>
+                              Rs. {payInfo.remaining.toFixed(2)}
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
+                      {payInfo.remaining > 0.01 ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openPaymentModal(viewingSale, "PARTIAL")}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            + Partial Pay
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openPaymentModal(viewingSale, "REMAINING")}
+                            className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors flex items-center gap-1.5"
+                          >
+                            <CreditCard className="w-3.5 h-3.5" />
+                            Pay Remaining (Rs. {payInfo.remaining.toFixed(2)})
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 px-2.5 py-0.5 text-xs font-semibold">
+                          <Check className="w-3.5 h-3.5 text-emerald-700" /> Fully Settled
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Recorded Payments List */}
+                    {viewingSale.payments && viewingSale.payments.length > 0 && (
+                      <div className="border-t border-slate-200/80 pt-2.5 mt-2">
+                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Recorded Payment Vouchers ({viewingSale.payments.length})
+                        </p>
+                        <div className="space-y-1">
+                          {viewingSale.payments.map((p, pIdx) => (
+                            <div key={p.id || pIdx} className="flex items-center justify-between text-xs bg-white px-3 py-1.5 rounded-lg border border-slate-200/60">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-slate-700">#{pIdx + 1}</span>
+                                <span className="text-slate-500">{p.paymentDate}</span>
+                                <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[10px] font-medium text-slate-700">
+                                  {p.method?.replace("_", " ") || "CASH"}
+                                </span>
+                                {p.referenceNumber && (
+                                  <span className="text-slate-400 text-[11px]">Ref: {p.referenceNumber}</span>
+                                )}
+                                {p.notes && (
+                                  <span className="text-slate-400 italic text-[11px]">({p.notes})</span>
+                                )}
+                              </div>
+                              <span className="font-bold text-emerald-700 font-mono">
+                                Rs. {Number(p.amount).toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-[#044d73] mb-2.5 flex items-center gap-1.5">
@@ -2110,6 +2329,9 @@ export default function SalesPage() {
           invoiceNumber={partialModalTarget.invoiceNumber}
           partyName={partialModalTarget.partyName}
           totalAmount={partialModalTarget.totalAmount}
+          alreadyPaid={partialModalTarget.alreadyPaid}
+          initialAmount={partialModalTarget.initialAmount}
+          existingPayments={partialModalTarget.existingPayments}
           direction="CUSTOMER"
           onConfirm={handleConfirmPartialPayment}
         />

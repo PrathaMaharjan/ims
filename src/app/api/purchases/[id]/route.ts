@@ -26,6 +26,7 @@ export async function GET(
       with: {
         items: { with: { batch: true } }, // nested relational fetch, one query
         party: true,
+        payments: true,
       },
     });
 

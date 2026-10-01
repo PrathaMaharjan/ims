@@ -185,7 +185,16 @@ interface PurchaseRecord {
     mrp: string;
     vatApplicable: boolean;
     lineTotal: string;
-   batch?: { salePrice: string | null; note: string | null } | null;
+    batch?: { salePrice: string | null; note: string | null } | null;
+  }>;
+  payments?: Array<{
+    id: string;
+    amount: string | number;
+    paymentDate: string;
+    method?: string | null;
+    referenceNumber?: string | null;
+    notes?: string | null;
+    createdAt?: string;
   }>;
 }
 
@@ -427,9 +436,8 @@ function ItemPicker({
         ref={buttonRef}
         type="button"
         onClick={toggleOpen}
-        className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${
-          open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
-        }`}
+        className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
+          }`}
       >
         <span className={`truncate ${selected ? "font-semibold text-slate-800" : "text-slate-400"}`}>
           {selected ? selected.name : "Select item..."}
@@ -463,9 +471,8 @@ function ItemPicker({
                     key={c.id}
                     type="button"
                     onClick={() => { onSelect(c); setOpen(false); setQuery(""); }}
-                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${
-                      selected?.id === c.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
-                    }`}
+                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${selected?.id === c.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
+                      }`}
                   >
                     <div className="min-w-0">
                       <p className="truncate text-xs font-semibold">{c.name}</p>
@@ -508,9 +515,8 @@ function SupplierPicker({
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-3 py-1.5 text-left text-sm transition-all ${
-          open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
-        }`}
+        className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-3 py-1.5 text-left text-sm transition-all ${open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
+          }`}
       >
         <span className={`truncate ${selected ? "font-semibold text-slate-800" : "text-slate-400"}`}>
           {selected ? selected.name : "Select supplier..."}
@@ -541,9 +547,8 @@ function SupplierPicker({
                     key={s.id}
                     type="button"
                     onClick={() => { onSelect(s); setOpen(false); setQuery(""); }}
-                    className={`flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${
-                      selected?.id === s.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
-                    }`}
+                    className={`flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${selected?.id === s.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
+                      }`}
                   >
                     <span className="truncate text-xs font-semibold">{s.name}</span>
                     {s.paymentTerms && <span className="text-[10px] text-slate-400">{s.paymentTerms}</span>}
@@ -602,7 +607,31 @@ export default function PurchasePage() {
     invoiceNumber: string;
     partyName?: string;
     totalAmount: number;
+    alreadyPaid: number;
+    initialAmount?: number;
+    existingPayments?: Array<any>;
   } | null>(null);
+
+  function getPurchasePaymentInfo(p: PurchaseRecord) {
+    const total = parseFloat(p.grandTotal) || 0;
+    const paid = (p.payments ?? []).reduce((sum, pay) => sum + (parseFloat(String(pay.amount)) || 0), 0);
+    const effectivePaid = p.paymentStatus === "PAID" && paid === 0 ? total : paid;
+    const remaining = p.paymentStatus === "PAID" ? 0 : Math.max(0, total - effectivePaid);
+    return { total, paid: effectivePaid, remaining };
+  }
+
+  function openPaymentModal(purchase: PurchaseRecord, mode: "PARTIAL" | "REMAINING" = "PARTIAL") {
+    const { total, paid, remaining } = getPurchasePaymentInfo(purchase);
+    setPartialModalTarget({
+      id: purchase.id,
+      invoiceNumber: purchase.supplierInvoiceNumber || `PUR-${purchase.id.slice(0, 6)}`,
+      partyName: purchase.party?.name,
+      totalAmount: total,
+      alreadyPaid: paid,
+      initialAmount: mode === "REMAINING" ? remaining : (remaining > 0 ? remaining : total),
+      existingPayments: purchase.payments,
+    });
+  }
 
   /* ---- initial catalog load: products + suppliers, in parallel ---- */
 
@@ -853,28 +882,28 @@ export default function PurchasePage() {
       partyId: record.party?.id ?? "",
       partyName: record.party?.name ?? "",
       items: record.items.map((it) => {
-  const product = products.find((p) => p.id === it.productId);
-  return {
-    id: crypto.randomUUID(),
-    purchaseItemId: it.id,
-    itemId: it.productId,
-    itemName: product?.name ?? "",
-    unit: product?.unit ?? "",
-    altUnit: product?.alternativeUnit ?? "",
-    vatApplicable: it.vatApplicable,
-    qty: it.quantity,
-    price: Number(it.purchaseRate),
-    batch: {
-      batchNo: it.batchNumber,
-      qty: it.quantity,
-      mfgDate: it.manufacturingDate ?? "",
-      expDate: it.expiryDate,
-      mrp: Number(it.mrp),
-      salePrice: it.batch?.salePrice ? Number(it.batch.salePrice) : "",
-      note: it.batch?.note ?? "", // ADDED — restores the saved note when editing
-    },
-  };
-}),
+        const product = products.find((p) => p.id === it.productId);
+        return {
+          id: crypto.randomUUID(),
+          purchaseItemId: it.id,
+          itemId: it.productId,
+          itemName: product?.name ?? "",
+          unit: product?.unit ?? "",
+          altUnit: product?.alternativeUnit ?? "",
+          vatApplicable: it.vatApplicable,
+          qty: it.quantity,
+          price: Number(it.purchaseRate),
+          batch: {
+            batchNo: it.batchNumber,
+            qty: it.quantity,
+            mfgDate: it.manufacturingDate ?? "",
+            expDate: it.expiryDate,
+            mrp: Number(it.mrp),
+            salePrice: it.batch?.salePrice ? Number(it.batch.salePrice) : "",
+            note: it.batch?.note ?? "", // ADDED — restores the saved note when editing
+          },
+        };
+      }),
       discounts: [
         ...(Number(record.discount) > 0
           ? [{ id: crypto.randomUUID(), category: "Discount" as const, amount: Number(record.discount), type: "Flat" as const }]
@@ -888,8 +917,8 @@ export default function PurchasePage() {
         ...(Number(record.roundOff) < 0
           ? [{ id: crypto.randomUUID(), category: "Rounded off (-)" as const, amount: Math.abs(Number(record.roundOff)), type: "Flat" as const }]
           : Number(record.roundOff) > 0
-          ? [{ id: crypto.randomUUID(), category: "Rounded off (+)" as const, amount: Number(record.roundOff), type: "Flat" as const }]
-          : []),
+            ? [{ id: crypto.randomUUID(), category: "Rounded off (+)" as const, amount: Number(record.roundOff), type: "Flat" as const }]
+            : []),
       ],
       roundingDirection: record.roundingDirection ?? "DOWN",
     });
@@ -997,47 +1026,47 @@ export default function PurchasePage() {
     adjustments.roundOffPlusTotal;
   const grandTotalEstimate = hasRoundingAdjustment
     ? (adjustments.effectiveRoundingDirection === "UP"
-        ? Math.ceil(rawTotalEstimate)
-        : Math.floor(rawTotalEstimate))
+      ? Math.ceil(rawTotalEstimate)
+      : Math.floor(rawTotalEstimate))
     : rawTotalEstimate;
 
-function buildPayload() {
-  const roundOffValue =
-    adjustments.roundOffPlusTotal > 0
-      ? adjustments.roundOffPlusTotal
-      : adjustments.roundOffMinusTotal > 0
-      ? -adjustments.roundOffMinusTotal
-      : 0;
+  function buildPayload() {
+    const roundOffValue =
+      adjustments.roundOffPlusTotal > 0
+        ? adjustments.roundOffPlusTotal
+        : adjustments.roundOffMinusTotal > 0
+          ? -adjustments.roundOffMinusTotal
+          : 0;
 
-  return {
-    partyId: form.partyId,
-    supplierInvoiceNumber: form.supplierInvoiceNumber.trim() || undefined,
-    purchaseDate: form.date,
-    purcType: form.purcType,
-    paymentType: form.paymentType,
-    roundingDirection: adjustments.effectiveRoundingDirection,
-    discount: adjustments.discountTotal,
-    freightCharges: adjustments.freightTotal,
-    vatRefund: adjustments.vatRefundTotal,
-    roundOff: roundOffValue,
-    vatRate: n(form.vatRate),
-    items: validItems.map((li) => ({
-      ...(li.purchaseItemId ? { purchaseItemId: li.purchaseItemId } : {}),
-      productId: li.itemId,
-      purchaseRate: n(li.price),
-      vatApplicable: li.vatApplicable,
-      batch: {
-        batchNumber: li.batch!.batchNo.trim(),
-        quantity: n(li.qty),
-        expiryDate: li.batch!.expDate,
-        manufacturingDate: li.batch!.mfgDate || undefined,
-        mrp: li.batch!.mrp === "" ? undefined : n(li.batch!.mrp),
-        salePrice: li.batch!.salePrice === "" ? undefined : n(li.batch!.salePrice),
-        note: li.batch!.note?.trim() || undefined, // ADDED — was being dropped before this
-      },
-    })),
-  };
-}
+    return {
+      partyId: form.partyId,
+      supplierInvoiceNumber: form.supplierInvoiceNumber.trim() || undefined,
+      purchaseDate: form.date,
+      purcType: form.purcType,
+      paymentType: form.paymentType,
+      roundingDirection: adjustments.effectiveRoundingDirection,
+      discount: adjustments.discountTotal,
+      freightCharges: adjustments.freightTotal,
+      vatRefund: adjustments.vatRefundTotal,
+      roundOff: roundOffValue,
+      vatRate: n(form.vatRate),
+      items: validItems.map((li) => ({
+        ...(li.purchaseItemId ? { purchaseItemId: li.purchaseItemId } : {}),
+        productId: li.itemId,
+        purchaseRate: n(li.price),
+        vatApplicable: li.vatApplicable,
+        batch: {
+          batchNumber: li.batch!.batchNo.trim(),
+          quantity: n(li.qty),
+          expiryDate: li.batch!.expDate,
+          manufacturingDate: li.batch!.mfgDate || undefined,
+          mrp: li.batch!.mrp === "" ? undefined : n(li.batch!.mrp),
+          salePrice: li.batch!.salePrice === "" ? undefined : n(li.batch!.salePrice),
+          note: li.batch!.note?.trim() || undefined, // ADDED — was being dropped before this
+        },
+      })),
+    };
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -1078,20 +1107,22 @@ function buildPayload() {
   }
 
   async function handleStatusChange(purchaseId: string, newStatus: PaymentStatus) {
+    const purchase = purchases.find((p) => p.id === purchaseId) ?? (viewingPurchase?.id === purchaseId ? viewingPurchase : null);
+    if (!purchase) return;
+
+    const { remaining } = getPurchasePaymentInfo(purchase);
+
     if (newStatus === "PARTIAL") {
-      const purchase = purchases.find((p) => p.id === purchaseId) ?? (viewingPurchase?.id === purchaseId ? viewingPurchase : null);
-      if (purchase) {
-        setPartialModalTarget({
-          id: purchase.id,
-          invoiceNumber: purchase.supplierInvoiceNumber || `PUR-${purchase.id.slice(0, 6)}`,
-          partyName: purchase.party?.name,
-          totalAmount: parseFloat(purchase.grandTotal) || 0,
-        });
-        return;
-      }
+      openPaymentModal(purchase, "PARTIAL");
+      return;
     }
 
-    const previous = purchases.find((item) => item.id === purchaseId)?.paymentStatus;
+    if (newStatus === "PAID" && remaining > 0.01) {
+      openPaymentModal(purchase, "REMAINING");
+      return;
+    }
+
+    const previous = purchase.paymentStatus;
 
     // update the UI first so the dropdown feels instant
     setPurchases((prev) => prev.map((item) => (item.id === purchaseId ? { ...item, paymentStatus: newStatus } : item)));
@@ -1099,7 +1130,11 @@ function buildPayload() {
 
     setStatusUpdatingId(purchaseId);
     try {
-      await api.patch(`/api/purchases/${purchaseId}/status`, { paymentStatus: newStatus });
+      const res = await api.patch(`/api/purchases/${purchaseId}/status`, { paymentStatus: newStatus });
+      if (res.data?.purchase) {
+        setPurchases((prev) => prev.map((item) => (item.id === purchaseId ? { ...item, ...res.data.purchase } : item)));
+        setViewingPurchase((prev) => (prev?.id === purchaseId ? { ...prev, ...res.data.purchase } : prev));
+      }
     } catch (err: any) {
       // roll back if the server rejected it
       setPurchases((prev) => prev.map((item) => (item.id === purchaseId ? { ...item, paymentStatus: previous } : item)));
@@ -1121,14 +1156,62 @@ function buildPayload() {
     const purchaseId = partialModalTarget.id;
     setStatusUpdatingId(purchaseId);
     try {
-      await api.patch(`/api/purchases/${purchaseId}/status`, {
-        paymentStatus: "PARTIAL",
+      const alreadyPaid = partialModalTarget.alreadyPaid || 0;
+      const totalPaid = alreadyPaid + data.amount;
+      const grandTotal = partialModalTarget.totalAmount;
+      const willBePaid = totalPaid >= grandTotal - 0.009;
+      const expectedStatus: PaymentStatus = willBePaid ? "PAID" : "PARTIAL";
+
+      const res = await api.patch(`/api/purchases/${purchaseId}/status`, {
+        paymentStatus: expectedStatus,
         ...data,
       });
-      setPurchases((prev) => prev.map((item) => (item.id === purchaseId ? { ...item, paymentStatus: "PARTIAL" } : item)));
-      setViewingPurchase((prev) => (prev?.id === purchaseId ? { ...prev, paymentStatus: "PARTIAL" } : prev));
+
+      const updatedPurchase = res.data?.purchase;
+      const newStatus = updatedPurchase?.paymentStatus ?? expectedStatus;
+      const newPayments = updatedPurchase?.payments;
+
+      setPurchases((prev) =>
+        prev.map((item) => {
+          if (item.id !== purchaseId) return item;
+          return {
+            ...item,
+            paymentStatus: newStatus,
+            payments: newPayments ?? [
+              ...(item.payments ?? []),
+              {
+                id: `pay-${Date.now()}`,
+                amount: data.amount.toFixed(2),
+                paymentDate: data.paymentDate,
+                method: data.method,
+                referenceNumber: data.referenceNumber,
+                notes: data.notes,
+              },
+            ],
+          };
+        }),
+      );
+
+      setViewingPurchase((prev) => {
+        if (prev?.id !== purchaseId) return prev;
+        return {
+          ...prev,
+          paymentStatus: newStatus,
+          payments: newPayments ?? [
+            ...(prev.payments ?? []),
+            {
+              id: `pay-${Date.now()}`,
+              amount: data.amount.toFixed(2),
+              paymentDate: data.paymentDate,
+              method: data.method,
+              referenceNumber: data.referenceNumber,
+              notes: data.notes,
+            },
+          ],
+        };
+      });
     } catch (err: any) {
-      alert(err?.response?.data?.error ?? "Failed to record partial payment.");
+      alert(err?.response?.data?.error ?? "Failed to record payment.");
     } finally {
       setStatusUpdatingId(null);
       setPartialModalTarget(null);
@@ -1250,7 +1333,7 @@ function buildPayload() {
           }}
           className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 focus:border-[#044d73] focus:outline-none max-w-[180px] truncate"
         >
-          <option value="ALL">All Suppliers</option>
+          <option value="ALL">All Parties</option>
           {suppliers.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -1365,23 +1448,44 @@ function buildPayload() {
                         {PAYMENT_TYPE_LABELS[p.paymentType] ?? p.paymentType}
                       </span>
                     </td>
-                    <td className="py-3 px-4">
-                      <select
-                        value={currentStatus}
-                        disabled={statusUpdatingId === p.id}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleStatusChange(p.id, e.target.value as PaymentStatus);
-                        }}
-                        className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${
-                          PAYMENT_STATUS_STYLES[currentStatus]?.badge
-                        }`}
-                      >
-                        <option value="PAID">Paid</option>
-                        <option value="PARTIAL">Partial</option>
-                        <option value="UNPAID">Unpaid</option>
-                      </select>
+                    <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-col gap-1 items-start">
+                        <select
+                          value={currentStatus}
+                          disabled={statusUpdatingId === p.id}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleStatusChange(p.id, e.target.value as PaymentStatus);
+                          }}
+                          className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${PAYMENT_STATUS_STYLES[currentStatus]?.badge
+                            }`}
+                        >
+                          <option value="PAID">Paid</option>
+                          <option value="PARTIAL">Partial</option>
+                          <option value="UNPAID">Unpaid</option>
+                        </select>
+                        {(() => {
+                          const payInfo = getPurchasePaymentInfo(p);
+                          if (currentStatus === "PARTIAL" && payInfo.remaining > 0.01) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openPaymentModal(p, "REMAINING");
+                                }}
+                                className="inline-flex items-center gap-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 text-[10px] font-semibold px-1.5 py-0.5 border border-amber-300 transition-colors"
+                                title={`Paid: Rs. ${payInfo.paid.toFixed(2)} | Due: Rs. ${payInfo.remaining.toFixed(2)}. Click to pay remaining balance.`}
+                              >
+                                <CreditCard className="w-2.5 h-2.5 text-amber-700" />
+                                <span>Pay Rs. {payInfo.remaining.toFixed(2)}</span>
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-xs text-slate-500">{PURC_TYPE_LABELS[p.purcType]}</td>
                     <td className="py-3 px-4 text-slate-500">{p.party?.name || "—"}</td>
@@ -1526,9 +1630,8 @@ function buildPayload() {
                       value={viewingPurchase.paymentStatus ?? (viewingPurchase.paymentType === "CREDIT" ? "UNPAID" : "PAID")}
                       disabled={statusUpdatingId === viewingPurchase.id}
                       onChange={(e) => handleStatusChange(viewingPurchase.id, e.target.value as PaymentStatus)}
-                      className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${
-                        PAYMENT_STATUS_STYLES[viewingPurchase.paymentStatus ?? (viewingPurchase.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"
-                      }`}
+                      className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${PAYMENT_STATUS_STYLES[viewingPurchase.paymentStatus ?? (viewingPurchase.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"
+                        }`}
                     >
                       <option value="PAID" className="text-slate-900 bg-white">Paid</option>
                       <option value="PARTIAL" className="text-slate-900 bg-white">Partial</option>
@@ -1544,6 +1647,89 @@ function buildPayload() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6">
+              {/* Payment Summary & Settlement Banner */}
+              {(() => {
+                const payInfo = getPurchasePaymentInfo(viewingPurchase);
+                return (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-[#044d73] flex items-center gap-1.5">
+                          <Wallet className="w-4 h-4" /> Payment Status & Balance
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-4 mt-1.5 text-xs">
+                          <span className="text-slate-600">
+                            Total Bill: <strong className="text-slate-800 font-mono">Rs. {payInfo.total.toFixed(2)}</strong>
+                          </span>
+                          <span className="text-slate-600">
+                            Paid to Supplier: <strong className="text-emerald-700 font-mono">Rs. {payInfo.paid.toFixed(2)}</strong>
+                          </span>
+                          <span className="text-slate-600">
+                            Balance Due:{" "}
+                            <strong className={`font-mono ${payInfo.remaining > 0.01 ? "text-amber-800 font-bold" : "text-emerald-700 font-bold"}`}>
+                              Rs. {payInfo.remaining.toFixed(2)}
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
+                      {payInfo.remaining > 0.01 ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openPaymentModal(viewingPurchase, "PARTIAL")}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            + Partial Pay
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openPaymentModal(viewingPurchase, "REMAINING")}
+                            className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors flex items-center gap-1.5"
+                          >
+                            <CreditCard className="w-3.5 h-3.5" />
+                            Pay Remaining (Rs. {payInfo.remaining.toFixed(2)})
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 px-2.5 py-0.5 text-xs font-semibold">
+                          <Check className="w-3.5 h-3.5 text-emerald-700" /> Fully Settled
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Recorded Payments List */}
+                    {viewingPurchase.payments && viewingPurchase.payments.length > 0 && (
+                      <div className="border-t border-slate-200/80 pt-2.5 mt-2">
+                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Recorded Payment Vouchers ({viewingPurchase.payments.length})
+                        </p>
+                        <div className="space-y-1">
+                          {viewingPurchase.payments.map((p, pIdx) => (
+                            <div key={p.id || pIdx} className="flex items-center justify-between text-xs bg-white px-3 py-1.5 rounded-lg border border-slate-200/60">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-slate-700">#{pIdx + 1}</span>
+                                <span className="text-slate-500">{p.paymentDate}</span>
+                                <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[10px] font-medium text-slate-700">
+                                  {p.method?.replace("_", " ") || "CASH"}
+                                </span>
+                                {p.referenceNumber && (
+                                  <span className="text-slate-400 text-[11px]">Ref: {p.referenceNumber}</span>
+                                )}
+                                {p.notes && (
+                                  <span className="text-slate-400 italic text-[11px]">({p.notes})</span>
+                                )}
+                              </div>
+                              <span className="font-bold text-emerald-700 font-mono">
+                                Rs. {Number(p.amount).toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-[#044d73] mb-2.5 flex items-center gap-1.5">
                   <PackagePlus className="w-4 h-4" /> Purchased Items & Batches
@@ -1849,9 +2035,8 @@ function buildPayload() {
                                       <button
                                         type="button"
                                         onClick={() => toggleBatchExpand(line.id)}
-                                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all ${
-                                          isExpanded ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]" : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                        }`}
+                                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all ${isExpanded ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]" : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                          }`}
                                       >
                                         <Check className="w-3.5 h-3.5 text-emerald-600" />
                                         <span className="truncate max-w-[130px]">B: {line.batch?.batchNo}</span>
@@ -1862,9 +2047,8 @@ function buildPayload() {
                                         type="button"
                                         onClick={() => toggleBatchExpand(line.id)}
                                         disabled={!line.itemId}
-                                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition-all disabled:opacity-40 ${
-                                          isExpanded ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]" : isMissingBatch ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-slate-200 bg-white text-slate-600 hover:border-[#044d73] hover:text-[#044d73]"
-                                        }`}
+                                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition-all disabled:opacity-40 ${isExpanded ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73]" : isMissingBatch ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-slate-200 bg-white text-slate-600 hover:border-[#044d73] hover:text-[#044d73]"
+                                          }`}
                                       >
                                         <Boxes className="w-3.5 h-3.5" />
                                         <span>Enter Batch</span>
@@ -2041,10 +2225,10 @@ function buildPayload() {
                                     d.category === "Rounded off (-)"
                                       ? `Auto (${adjustments.roundOffMinusTotal.toFixed(2)})`
                                       : d.category === "Rounded off (+)"
-                                      ? `Auto (${adjustments.roundOffPlusTotal.toFixed(2)})`
-                                      : d.type === "Percentage"
-                                      ? "%"
-                                      : "Rs."
+                                        ? `Auto (${adjustments.roundOffPlusTotal.toFixed(2)})`
+                                        : d.type === "Percentage"
+                                          ? "%"
+                                          : "Rs."
                                   }
                                   onChange={(e) => updateDiscount(d.id, { amount: e.target.value === "" ? "" : Number(e.target.value) })}
                                   className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
@@ -2152,6 +2336,9 @@ function buildPayload() {
           invoiceNumber={partialModalTarget.invoiceNumber}
           partyName={partialModalTarget.partyName}
           totalAmount={partialModalTarget.totalAmount}
+          alreadyPaid={partialModalTarget.alreadyPaid}
+          initialAmount={partialModalTarget.initialAmount}
+          existingPayments={partialModalTarget.existingPayments}
           direction="SUPPLIER"
           onConfirm={handleConfirmPartialPayment}
         />

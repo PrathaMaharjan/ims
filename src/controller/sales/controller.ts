@@ -8,7 +8,7 @@ import {
   saleItems,
   sales,
 } from "@/db/schema";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 // import { CreateSaleInput, updateSaleInput } from "@/lib/validation/sales";
 import { invalidateCache } from "@/lib/cache";
 import { UpdateSalePaymentStatusInput } from "@/lib/validation/sales";
@@ -452,9 +452,54 @@ export async function updateSalePaymentStatus(
     throw new Error("Sale not found");
   }
 
+  const existingPayments = await db
+    .select({ amount: payments.amount })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.organizationId, organizationId),
+        eq(payments.saleId, saleId),
+      ),
+    );
+
+  const alreadyPaid = existingPayments.reduce(
+    (sum, p) => sum + (parseFloat(p.amount) || 0),
+    0,
+  );
+
+  let finalStatus: "PAID" | "PARTIAL" | "UNPAID" = input.paymentStatus;
+  const grandTotal = parseFloat(existingSale.grandTotal) || 0;
+
+  // If a payment amount is provided, record into payments table
+  if (input.amount && input.amount > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    const totalPaid = alreadyPaid + input.amount;
+
+    await db.insert(payments).values({
+      organizationId,
+      direction: "RECEIVED_FROM_CUSTOMER",
+      saleId: existingSale.id,
+      partyId: existingSale.partyId,
+      amount: input.amount.toFixed(2),
+      paymentDate: input.paymentDate || today,
+      method: input.method || "CASH",
+      referenceNumber: input.referenceNumber || null,
+      notes: input.notes || `Payment for invoice SAL-${String(existingSale.invoiceNumber).padStart(4, "0")}`,
+      createdByUserId: userId || null,
+    });
+
+    if (totalPaid >= grandTotal - 0.009) {
+      finalStatus = "PAID";
+    } else if (totalPaid > 0) {
+      finalStatus = "PARTIAL";
+    } else {
+      finalStatus = "UNPAID";
+    }
+  }
+
   const [updated] = await db
     .update(sales)
-    .set({ paymentStatus: input.paymentStatus })
+    .set({ paymentStatus: finalStatus })
     .where(
       and(
         eq(sales.id, saleId),
@@ -472,22 +517,27 @@ export async function updateSalePaymentStatus(
     throw new Error("Sale not found");
   }
 
-  // If a payment amount is provided (e.g. for PARTIAL or PAID), record into payments table
-  if (input.amount && input.amount > 0) {
-    const today = new Date().toISOString().slice(0, 10);
-    await db.insert(payments).values({
-      organizationId,
-      direction: "RECEIVED_FROM_CUSTOMER",
-      saleId: existingSale.id,
-      partyId: existingSale.partyId,
-      amount: input.amount.toFixed(2),
-      paymentDate: input.paymentDate || today,
-      method: input.method || "CASH",
-      referenceNumber: input.referenceNumber || null,
-      notes: input.notes || `Partial payment for invoice SAL-${String(existingSale.invoiceNumber).padStart(4, "0")}`,
-      createdByUserId: userId || null,
-    });
-  }
+  const allPayments = await db
+    .select({
+      id: payments.id,
+      amount: payments.amount,
+      paymentDate: payments.paymentDate,
+      method: payments.method,
+      referenceNumber: payments.referenceNumber,
+      notes: payments.notes,
+      createdAt: payments.createdAt,
+    })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.organizationId, organizationId),
+        eq(payments.saleId, saleId),
+      ),
+    )
+    .orderBy(desc(payments.paymentDate), desc(payments.createdAt));
 
-  return updated;
+  return {
+    ...updated,
+    payments: allPayments,
+  };
 }

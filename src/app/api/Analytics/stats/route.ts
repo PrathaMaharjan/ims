@@ -19,20 +19,20 @@ export async function GET(req: NextRequest) {
     }
 
     const query = parsed.data;
-    const cacheKey =
-      query.mode === "monthly"
-        ? `analytics:stats:${auth.organizationId}:monthly:${query.startMonth}:${query.endMonth}`
-        : `analytics:stats:${auth.organizationId}:yearly:${query.startYear}:${query.endYear}`;
+    // const cacheKey =
+    //   query.mode === "monthly"
+    //     ? `analytics:stats:${auth.organizationId}:monthly:${query.startMonth}:${query.endMonth}`
+    //     : `analytics:stats:${auth.organizationId}:yearly:${query.startYear}:${query.endYear}`;
 
-    const cached = await getCached(cacheKey);
-    if (cached) return NextResponse.json(cached);
+    // const cached = await getCached(cacheKey);
+    // if (cached) return NextResponse.json(cached);
 
     const result =
       query.mode === "monthly"
         ? await getSummaryCardsMonthly(auth.organizationId, query.startMonth!, query.endMonth!)
         : await getSummaryCardsYearly(auth.organizationId, query.startYear!, query.endYear!);
 
-    await setCached(cacheKey, result, 60 * 5);
+    // await setCached(cacheKey, result, 60 * 5);
 
     return NextResponse.json(result);
   } catch (error) {

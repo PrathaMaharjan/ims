@@ -179,6 +179,7 @@ export async function createSale(
       partyId: input.partyId,
       saleDate: input.saleDate ? new Date(input.saleDate) : new Date(),
       paymentType: input.paymentType,
+      paymentStatus: "UNPAID",
       roundingDirection: input.roundingDirection,
       subtotal: totals.subtotal.toFixed(2),
       discount: (input.discount ?? 0).toFixed(2),

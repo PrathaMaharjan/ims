@@ -23,7 +23,7 @@ export async function sendStaffWelcomeEmail(params: {
     text: [
       `Hi ${params.name},`,
       "",
-      "An account has been created for you.",
+      "An account has been created for you in IMS.",
       "",
       `Login: ${loginUrl}`,
       `Email: ${params.to}`,

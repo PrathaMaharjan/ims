@@ -19,6 +19,7 @@ import {
   ChevronRight,
   AlertTriangle,
   FileText,
+  CreditCard,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
@@ -317,24 +318,6 @@ export default function PartiesPage() {
         </div>
       )}
 
-      {/* Type Tabs */}
-      <div className="flex items-center gap-1 self-start rounded-xl bg-slate-100 p-1 border border-slate-200 overflow-x-auto max-w-full">
-        {TYPE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            onClick={() => handleTabChange(tab.value)}
-            className={`rounded-lg px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${
-              typeTab === tab.value
-                ? "bg-white text-[#044d73] shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       {/* Top Status Dashboards — scoped to the selected tab */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-200 border-l-4 border-l-slate-400 bg-white p-4 shadow-sm flex items-center justify-between sm:p-5">
@@ -390,6 +373,18 @@ export default function PartiesPage() {
           </div>
 
           <select
+            value={typeTab}
+            onChange={(e) => handleTabChange(e.target.value as TypeTab)}
+            className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+          >
+            {TYPE_TABS.map((tab) => (
+              <option key={tab.value} value={tab.value}>
+                {tab.label}
+              </option>
+            ))}
+          </select>
+
+          <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
@@ -427,6 +422,7 @@ export default function PartiesPage() {
                     <th className="py-3 px-4">Contact Person</th>
                     <th className="py-3 px-4">Contact</th>
                     <th className="py-3 px-4">PAN No.</th>
+                    <th className="py-3 px-4">Payment Terms</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
@@ -434,7 +430,7 @@ export default function PartiesPage() {
                 <tbody className="divide-y divide-slate-100">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-sm text-slate-400">
+                      <td colSpan={8} className="py-12 text-center text-sm text-slate-400">
                         No {tabNoun} match your search.
                       </td>
                     </tr>
@@ -470,6 +466,15 @@ export default function PartiesPage() {
                         </td>
                         <td className="py-4 px-4 text-slate-500 font-mono text-xs">
                           {party.panVatNumber || "—"}
+                        </td>
+                        <td className="py-4 px-4 text-slate-600 text-xs">
+                          {party.paymentTerms ? (
+                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200/60">
+                              {party.paymentTerms}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
                         </td>
                         <td className="py-4 px-4">
                           <button
@@ -573,6 +578,12 @@ export default function PartiesPage() {
                         <Phone className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                         <span className="font-mono text-slate-600">{party.phone || "—"}</span>
                       </div>
+                      {party.paymentTerms && (
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span className="text-slate-700 font-medium">Terms: {party.paymentTerms}</span>
+                        </div>
+                      )}
                       {party.address && (
                         <div className="flex items-center gap-2">
                           <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />

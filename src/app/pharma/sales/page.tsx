@@ -234,7 +234,7 @@ function emptyForm(): SaleForm {
   return {
     date: todayISO(),
     paymentType: "CASH",
-    paymentStatus: "PAID",
+    paymentStatus: "UNPAID",
     vatRate: 13,
     roundingDirection: "DOWN",
     partyId: "",
@@ -759,7 +759,7 @@ export default function SalesPage() {
 
   const visibleSales = filteredSales.filter((s) => {
     if (paymentFilter !== "ALL" && s.paymentType !== paymentFilter) return false;
-    const status = s.paymentStatus ?? (s.paymentType === "CREDIT" ? "UNPAID" : "PAID");
+    const status = s.paymentStatus ?? "UNPAID";
     if (paymentStatusFilter !== "ALL" && status !== paymentStatusFilter) return false;
     return true;
   });
@@ -912,7 +912,7 @@ export default function SalesPage() {
     setForm({
       date: record.saleDate.slice(0, 10),
       paymentType: record.paymentType,
-      paymentStatus: record.paymentStatus ?? (record.paymentType === "CREDIT" ? "UNPAID" : "PAID"),
+      paymentStatus: record.paymentStatus ?? "UNPAID",
       vatRate: 13, // not persisted per-sale, same known limitation as purchases
       roundingDirection: record.roundingDirection,
       partyId: record.party?.id ?? "",
@@ -1110,14 +1110,14 @@ export default function SalesPage() {
       if (editingSaleId) {
         await api.patch(`/api/sales/${editingSaleId}`, payload);
         const refreshed = await api.get(`/api/sales/${editingSaleId}`);
-        const updated: SaleRecord = { ...refreshed.data.sale, paymentStatus: form.paymentStatus };
+        const updated: SaleRecord = { ...refreshed.data.sale, paymentStatus: refreshed.data.sale.paymentStatus ?? "UNPAID" };
         const original = sales.find((s) => s.id === editingSaleId) ?? null;
         applyStatsDelta(original, updated);
         setSales((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       } else {
         const created = await api.post("/api/sales", payload);
         const fullSale = await api.get(`/api/sales/${created.data.saleId}`);
-        const newSale: SaleRecord = { ...fullSale.data.sale, paymentStatus: form.paymentStatus };
+        const newSale: SaleRecord = { ...fullSale.data.sale, paymentStatus: fullSale.data.sale.paymentStatus ?? "UNPAID" };
         applyStatsDelta(null, newSale);
         if (currentPage === 1 && paymentFilter === "ALL" && !search) {
           setSales((prev) => [newSale, ...prev].slice(0, PAGE_LIMIT));
@@ -1340,7 +1340,7 @@ export default function SalesPage() {
                 <tr><td colSpan={9} className="py-16 text-center text-sm text-slate-400">No sales vouchers match criteria.</td></tr>
               ) : visibleSales.map((s) => {
                 const totalQty = s.items.reduce((acc, li) => acc + li.quantity, 0);
-                const currentStatus: PaymentStatus = s.paymentStatus ?? (s.paymentType === "CREDIT" ? "UNPAID" : "PAID");
+                const currentStatus: PaymentStatus = s.paymentStatus ?? "UNPAID";
                 return (
                   <tr key={s.id} onClick={() => setViewingSale(s)} className="hover:bg-slate-50/80 transition-colors text-slate-700 cursor-pointer group">
                     <td className="py-3 px-4 text-slate-500">{s.saleDate.slice(0, 10)}</td>
@@ -1359,9 +1359,8 @@ export default function SalesPage() {
                           e.stopPropagation();
                           handleStatusChange(s.id, e.target.value as PaymentStatus);
                         }}
-                        className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${
-                          PAYMENT_STATUS_STYLES[currentStatus]?.badge
-                        }`}
+                        className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2 py-0.5 border transition-colors outline-none ${PAYMENT_STATUS_STYLES[currentStatus]?.badge
+                          }`}
                       >
                         <option value="PAID">Paid</option>
                         <option value="PARTIAL">Partial</option>
@@ -1480,12 +1479,11 @@ export default function SalesPage() {
                       {PAYMENT_TYPE_LABELS[viewingSale.paymentType] ?? viewingSale.paymentType}
                     </span>
                     <select
-                      value={viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")}
+                      value={viewingSale.paymentStatus ?? "UNPAID"}
                       disabled={statusUpdatingId === viewingSale.id}
                       onChange={(e) => handleStatusChange(viewingSale.id, e.target.value as PaymentStatus)}
-                      className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${
-                        PAYMENT_STATUS_STYLES[viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"
-                      }`}
+                      className={`cursor-pointer disabled:opacity-50 text-[10px] font-bold rounded-full px-2.5 py-0.5 border outline-none ${PAYMENT_STATUS_STYLES[viewingSale.paymentStatus ?? "UNPAID"]?.viewBadge ?? "bg-slate-400/20 border-slate-300 text-slate-100"
+                        }`}
                     >
                       <option value="PAID" className="text-slate-900 bg-white">Paid</option>
                       <option value="PARTIAL" className="text-slate-900 bg-white">Partial</option>
@@ -1519,12 +1517,11 @@ export default function SalesPage() {
                 <div>
                   <span className="text-slate-400 block font-medium uppercase text-[10px]">Payment Status</span>
                   <select
-                    value={viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")}
+                    value={viewingSale.paymentStatus ?? "UNPAID"}
                     disabled={statusUpdatingId === viewingSale.id}
                     onChange={(e) => handleStatusChange(viewingSale.id, e.target.value as PaymentStatus)}
-                    className={`cursor-pointer disabled:opacity-50 text-xs font-bold rounded-lg px-2 py-1 border mt-0.5 outline-none block w-full ${
-                      PAYMENT_STATUS_STYLES[viewingSale.paymentStatus ?? (viewingSale.paymentType === "CREDIT" ? "UNPAID" : "PAID")]?.badge
-                    }`}
+                    className={`cursor-pointer disabled:opacity-50 text-xs font-bold rounded-lg px-2 py-1 border mt-0.5 outline-none block w-full ${PAYMENT_STATUS_STYLES[viewingSale.paymentStatus ?? "UNPAID"]?.badge
+                      }`}
                   >
                     <option value="PAID">Paid</option>
                     <option value="PARTIAL">Partial</option>
@@ -1648,7 +1645,7 @@ export default function SalesPage() {
                 {saveError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600 font-medium">{saveError}</div>}
 
                 <Section title="Voucher & Customer" icon={<ShoppingCart className="w-3.5 h-3.5" />}>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="Date">
                       <input type="date" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} className={inputCls} />
                     </Field>
@@ -1660,7 +1657,7 @@ export default function SalesPage() {
                           setForm((p) => ({
                             ...p,
                             paymentType: pt,
-                            paymentStatus: pt === "CREDIT" ? "UNPAID" : "PAID",
+                            paymentStatus: "UNPAID",
                           }));
                         }}
                         className={inputCls}
@@ -1672,17 +1669,7 @@ export default function SalesPage() {
                         <option value="MOBILE_PAYMENT">Mobile Payment</option>
                       </select>
                     </Field>
-                    <Field label="Payment Status">
-                      <select
-                        value={form.paymentStatus}
-                        onChange={(e) => setForm((p) => ({ ...p, paymentStatus: e.target.value as PaymentStatus }))}
-                        className={inputCls}
-                      >
-                        <option value="PAID">Paid</option>
-                        <option value="PARTIAL">Partial</option>
-                        <option value="UNPAID">Unpaid</option>
-                      </select>
-                    </Field>
+
                     <Field label="VAT Rate (%)">
                       <input type="number" min={0} max={100} step="0.01" value={form.vatRate} onChange={(e) => setForm((p) => ({ ...p, vatRate: e.target.value === "" ? "" : Number(e.target.value) }))} className={inputCls} />
                     </Field>

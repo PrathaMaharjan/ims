@@ -308,14 +308,14 @@ export default function BatchesPage() {
       setSelectedBatch((prev) =>
         prev && prev.batchId === editingBatch.batchId
           ? {
-              ...prev,
-              batchNumber: editForm.batchNumber.trim(),
-              expiryDate: editForm.expiryDate,
-              quantityAvailable: qty,
-              purchasePrice: cost,
-              valueAtRisk: qty * cost,
-              note: editForm.note.trim() || null,
-            }
+            ...prev,
+            batchNumber: editForm.batchNumber.trim(),
+            expiryDate: editForm.expiryDate,
+            quantityAvailable: qty,
+            purchasePrice: cost,
+            valueAtRisk: qty * cost,
+            note: editForm.note.trim() || null,
+          }
           : prev
       );
       refreshAll();
@@ -613,13 +613,7 @@ export default function BatchesPage() {
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </button>
-          <Link
-            href="/pharma/inventory"
-            className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors"
-          >
-            <Boxes className="h-4 w-4" strokeWidth={2.5} />
-            Inventory View
-          </Link>
+
         </div>
       </div>
 
@@ -710,8 +704,8 @@ export default function BatchesPage() {
               type="button"
               onClick={() => setStatusFilter(tab.id as StatusFilterOption)}
               className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${statusFilter === tab.id
-                  ? "bg-white text-[#044d73] shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
+                ? "bg-white text-[#044d73] shadow-xs"
+                : "text-slate-600 hover:text-slate-900"
                 }`}
             >
               {tab.label}
@@ -1106,8 +1100,8 @@ export default function BatchesPage() {
                             <div
                               key={r.id}
                               className={`rounded-xl border p-4 space-y-3 transition-colors ${isPending
-                                  ? "border-amber-200 bg-amber-50/50"
-                                  : "border-emerald-200 bg-emerald-50/40"
+                                ? "border-amber-200 bg-amber-50/50"
+                                : "border-emerald-200 bg-emerald-50/40"
                                 }`}
                             >
                               <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -1185,8 +1179,8 @@ export default function BatchesPage() {
                                         type="button"
                                         onClick={() => setResolution(t)}
                                         className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-all ${resolution === t
-                                            ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73] shadow-xs"
-                                            : "border-slate-200 bg-slate-50 hover:bg-white text-slate-600"
+                                          ? "border-[#044d73] bg-[#044d73]/10 text-[#044d73] shadow-xs"
+                                          : "border-slate-200 bg-slate-50 hover:bg-white text-slate-600"
                                           }`}
                                       >
                                         {t === "MONEY" ? "Credit Note / Refund" : "Replacement Stock"}

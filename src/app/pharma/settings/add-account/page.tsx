@@ -14,6 +14,7 @@ import {
   Trash2,
   Calendar,
   AlertCircle,
+  AlertTriangle,
   X,
   CheckCircle2,
   Loader2,
@@ -80,7 +81,8 @@ export default function AddAccountPage() {
 
   // Submission State
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AccountItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -120,13 +122,17 @@ export default function AddAccountPage() {
   // Close modal on Escape key
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && isModalOpen) {
-        handleCloseModal();
+      if (e.key === "Escape") {
+        if (deleteTarget) {
+          setDeleteTarget(null);
+        } else if (isModalOpen) {
+          handleCloseModal();
+        }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isModalOpen]);
+  }, [isModalOpen, deleteTarget]);
 
   function triggerToast(msg: string) {
     setToastMessage(msg);
@@ -210,22 +216,22 @@ export default function AddAccountPage() {
     }
   }
 
-  async function handleDeleteAccount(id: string, accName: string) {
-    if (!window.confirm(`Are you sure you want to delete the account for "${accName}"?`)) {
-      return;
-    }
-    setDeletingId(id);
+  async function confirmDeleteAccount() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await api.delete(`/api/staff/${id}`);
-      triggerToast(`Account for ${accName} removed.`);
+      await api.delete(`/api/staff/${deleteTarget.id}`);
+      triggerToast(`Account for ${deleteTarget.name} removed.`);
 
       // If that was the last row on this page, step back one page
       if (accounts.length === 1 && page > 1) setPage(page - 1);
       else await fetchAccounts();
+      setDeleteTarget(null);
     } catch (err) {
       triggerToast(getErrorMessage(err, "Failed to delete account."));
+      setDeleteTarget(null);
     } finally {
-      setDeletingId(null);
+      setDeleting(false);
     }
   }
 
@@ -344,8 +350,7 @@ export default function AddAccountPage() {
                 onClick={handleOpenModal}
                 className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-[#044d73] hover:underline"
               >
-                <UserPlus className="h-3.5 w-3.5" />
-                Add your first user
+
               </button>
             )}
           </div>
@@ -409,17 +414,12 @@ export default function AddAccountPage() {
                       <td className="py-4 px-6 text-right whitespace-nowrap">
                         <button
                           type="button"
-                          disabled={deletingId === account.id}
-                          onClick={() => handleDeleteAccount(account.id, account.name)}
+                          onClick={() => setDeleteTarget(account)}
                           title="Delete account"
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100 disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100"
                         >
-                          {deletingId === account.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                          <span className="text-xs font-medium">Delete</span>
+                          <Trash2 className="h-3.5 w-3.5" />
+
                         </button>
                       </td>
                     </tr>
@@ -645,6 +645,56 @@ export default function AddAccountPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-xl bg-white shadow-xl border border-slate-100 overflow-hidden mx-auto animate-in zoom-in-95 duration-150"
+          >
+            <div className="flex flex-col items-center gap-3 p-5 text-center sm:gap-4 sm:p-8">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600 sm:h-14 sm:w-14">
+                <AlertTriangle className="h-6 w-6 sm:h-7 sm:w-7" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Delete Account</h2>
+                <p className="mt-2 text-sm text-slate-500 px-2">
+                  Are you sure you want to delete the account for{" "}
+                  <span className="font-semibold text-slate-700">{deleteTarget.name}</span>? This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-3 border-t border-slate-100 p-4 bg-slate-50/50 sm:p-6">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteAccount}
+                disabled={deleting}
+                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Delete</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Public for everyone, logged in or not (exact match only).
-const PUBLIC_EXACT = ["/"];
 
-// Auth pages: public, but a logged-in user gets sent to the app.
+const PUBLIC_EXACT = ["/", "/offline"];
+
+
 const AUTH_PATHS = ["/login", "/forgot-password"];
 
 function matchesPath(pathname: string, path: string) {
@@ -32,5 +32,7 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|.*\\.(?:png|jpg|jpeg|svg|webp|ico)$).*)",
+  ],
 };

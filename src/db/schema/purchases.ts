@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, date, numeric, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, date, numeric, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { organizations } from "./organizations";
 import { parties } from "./parties";
@@ -30,6 +30,7 @@ export const purchases = pgTable("purchases", {
   vatRefund: numeric("vat_refund", { precision: 12, scale: 2 }).notNull().default("0"),
   roundOff: numeric("round_off", { precision: 12, scale: 2 }).notNull().default("0"),
   grandTotal: numeric("grand_total", { precision: 12, scale: 2 }).notNull(),
+  note: text("note"),
 
  paymentStatus: paymentStatusEnum("payment_status").notNull().default("UNPAID"),
   createdByUserId: uuid("created_by_user_id").references(() => users.id, {

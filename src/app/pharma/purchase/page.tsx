@@ -151,6 +151,7 @@ interface PurchaseForm {
   vatRate: Num;
   partyId: string;
   partyName: string;
+  note: string;
   items: LineItemForm[];
   discounts: DiscountRowForm[];
   roundingDirection: RoundingDirection;
@@ -173,6 +174,7 @@ interface PurchaseRecord {
   vatRefund: string;
   roundOff?: string;
   grandTotal: string;
+  note?: string | null;
   party?: Supplier;
   items: Array<{
     id: string;
@@ -238,6 +240,7 @@ function emptyForm(): PurchaseForm {
     vatRate: 13,
     partyId: "",
     partyName: "",
+    note: "",
     items: [emptyLine()],
     discounts: [],
     roundingDirection: "DOWN",
@@ -881,6 +884,7 @@ export default function PurchasePage() {
       vatRate: 13,
       partyId: record.party?.id ?? "",
       partyName: record.party?.name ?? "",
+      note: record.note ?? "",
       items: record.items.map((it) => {
         const product = products.find((p) => p.id === it.productId);
         return {
@@ -1050,6 +1054,7 @@ export default function PurchasePage() {
       vatRefund: adjustments.vatRefundTotal,
       roundOff: roundOffValue,
       vatRate: n(form.vatRate),
+      note: form.note.trim(), // "" clears the note on edit
       items: validItems.map((li) => ({
         ...(li.purchaseItemId ? { purchaseItemId: li.purchaseItemId } : {}),
         productId: li.itemId,
@@ -1773,6 +1778,13 @@ export default function PurchasePage() {
                 </div>
               </div>
 
+              {viewingPurchase.note && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700">Purchase Note</h4>
+                  <p className="mt-1.5 whitespace-pre-wrap break-words text-xs text-slate-700">{viewingPurchase.note}</p>
+                </div>
+              )}
+
               <div className="sm:ml-auto w-full sm:max-w-xs space-y-1.5 rounded-xl bg-slate-50 p-4 border border-slate-200">
                 <div className="flex justify-between text-xs text-slate-500">
                   <span>Subtotal</span><span>{rs(Number(viewingPurchase.subtotal))}</span>
@@ -1944,6 +1956,18 @@ export default function PurchasePage() {
                         />
                       </Field>
                     )}
+                  </div>
+                  <div className="mt-4">
+                    <Field label="Purchase Note / Remarks">
+                      <textarea
+                        rows={2}
+                        maxLength={1000}
+                        value={form.note}
+                        onChange={e => setForm(p => ({ ...p, note: e.target.value }))}
+                        placeholder="e.g. Delivery terms, payment agreement, supplier remarks..."
+                        className={`${inputCls} resize-y`}
+                      />
+                    </Field>
                   </div>
                 </Section>
 

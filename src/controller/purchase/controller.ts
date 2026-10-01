@@ -259,6 +259,7 @@ export async function createPurchase(
       vatRefund: input.vatRefund.toFixed(2),
       roundOff: (input.roundOff ?? 0).toFixed(2),
       grandTotal: totals.grandTotal.toFixed(2),
+      note: input.note?.trim() || null,
       createdByUserId: userId,
     })
     .returning({ id: purchases.id });
@@ -545,6 +546,8 @@ export async function updatePurchase(
         vatRefund: input.vatRefund.toFixed(2),
         roundOff: (input.roundOff ?? 0).toFixed(2),
         grandTotal: totals.grandTotal.toFixed(2),
+        // undefined = leave as is, "" = clear
+        note: input.note === undefined ? undefined : input.note.trim() || null,
       })
       .where(eq(purchases.id, purchaseId));
 

@@ -22,6 +22,7 @@ paymentType: z
   vatRefund: z.number().nonnegative().default(0),
   roundOff: z.number().default(0),
   vatRate: z.number().nonnegative().max(100).default(13),
+  note: z.string().max(1000).optional(),
   items: z.array(purchaseItemInputSchema).min(1),
 });
 
@@ -53,6 +54,7 @@ export const updatePurchaseSchema = z.object({
   vatRefund: z.number().nonnegative().default(0),
   roundOff: z.number().default(0),
   vatRate: z.number().nonnegative().max(100).default(13),
+  note: z.string().max(1000).optional(), // send "" to clear an existing note
   items: z.array(updatePurchaseItemInputSchema).min(1),
 });
 

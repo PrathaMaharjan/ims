@@ -6,6 +6,8 @@ import {
     TrendingDown,
     Wallet,
     Receipt,
+    Calendar,
+    RotateCcw,
     ChevronLeft,
     ChevronRight,
     PieChart as PieIcon,
@@ -65,36 +67,26 @@ interface RevenueVsExpenseRow {
 
 type ViewMode = "monthly" | "yearly";
 
-const VIEW_MODES: { value: ViewMode; label: string }[] = [
-    { value: "monthly", label: "Monthly" },
-    { value: "yearly", label: "Yearly" },
-];
-
 const ITEMS_PER_PAGE = 6;
 const COLORS = { revenue: "#044d73", expense: "#f43f5e", profit: "#0ea5e9" };
 // expense-split returns whatever categories exist, so the palette cycles.
 const PIE_COLORS = ["#044d73", "#f59e0b", "#0ea5e9", "#94a3b8", "#a855f7", "#22c55e", "#ef4444", "#14b8a6"];
 
-// Default range: the last 9 months ending this month, in local time.
-function defaultMonthRange(): { start: string; end: string } {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const end = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-    const startDate = new Date(now.getFullYear(), now.getMonth() - 8, 1);
-    const start = `${startDate.getFullYear()}-${pad(startDate.getMonth() + 1)}`;
-    return { start, end };
-}
+const now = new Date();
+const CURRENT_YEAR = now.getFullYear();
+const DEFAULT_MONTH_FROM = `${CURRENT_YEAR}-01`;
+const DEFAULT_MONTH_TO = `${CURRENT_YEAR}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
 /* ------------------------------------------------------------------ */
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
 export default function AnalyticsPage() {
-    const initialRange = useMemo(defaultMonthRange, []);
-
     const [viewMode, setViewMode] = useState<ViewMode>("monthly");
-    const [startMonth, setStartMonth] = useState(initialRange.start);
-    const [endMonth, setEndMonth] = useState(initialRange.end);
+    const [monthFrom, setMonthFrom] = useState(DEFAULT_MONTH_FROM);
+    const [monthTo, setMonthTo] = useState(DEFAULT_MONTH_TO);
+    const [yearFrom, setYearFrom] = useState(String(CURRENT_YEAR));
+    const [yearTo, setYearTo] = useState(String(CURRENT_YEAR));
     const [tablePage, setTablePage] = useState(1);
 
     const [stats, setStats] = useState<SummaryCards>({ revenue: 0, totalExpense: 0, netProfit: 0 });
@@ -115,13 +107,10 @@ export default function AnalyticsPage() {
             setLoading(true);
             setLoadError(null);
 
-            const startYear = Number(startMonth.slice(0, 4));
-            const endYear = Number(endMonth.slice(0, 4));
-
             const rangeParams =
                 viewMode === "monthly"
-                    ? { mode: "monthly", startMonth, endMonth }
-                    : { mode: "yearly", startYear, endYear };
+                    ? { mode: "monthly", startMonth: monthFrom, endMonth: monthTo }
+                    : { mode: "yearly", startYear: yearFrom, endYear: yearTo };
 
             try {
                 const [cardsRes, breakdownRes, splitRes, trendRes] = await Promise.all([
@@ -149,7 +138,22 @@ export default function AnalyticsPage() {
         return () => {
             cancelled = true;
         };
-    }, [viewMode, startMonth, endMonth]);
+    }, [viewMode, monthFrom, monthTo, yearFrom, yearTo]);
+
+    const resetFilters = () => {
+        setMonthFrom(DEFAULT_MONTH_FROM);
+        setMonthTo(DEFAULT_MONTH_TO);
+        setYearFrom(String(CURRENT_YEAR));
+        setYearTo(String(CURRENT_YEAR));
+        setViewMode("monthly");
+    };
+
+    const isFiltered =
+        viewMode !== "monthly" ||
+        monthFrom !== DEFAULT_MONTH_FROM ||
+        monthTo !== DEFAULT_MONTH_TO ||
+        yearFrom !== String(CURRENT_YEAR) ||
+        yearTo !== String(CURRENT_YEAR);
 
     // Newest period first in the table, chronological in the chart.
     const tableRows = useMemo(() => [...breakdown].reverse(), [breakdown]);
@@ -184,42 +188,99 @@ export default function AnalyticsPage() {
 
     return (
         <div className="flex flex-col gap-8">
-            {/* Header */}
-            <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+            {/* Header with View Mode Toggles */}
+            <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-6 text-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Analytics</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Analytics</h1>
                 </div>
-                <div className="bg-white/10 border border-white/20 p-1 rounded-xl flex items-center justify-center gap-1 w-full sm:w-auto">
-                    {VIEW_MODES.map(m => (
+
+                <div className="flex items-center gap-1 self-stretch sm:self-auto rounded-xl bg-white/10 p-1 border border-white/20 overflow-x-auto justify-between sm:justify-start">
+                    {(["monthly", "yearly"] as ViewMode[]).map((mode) => (
                         <button
-                            key={m.value}
-                            onClick={() => setViewMode(m.value)}
-                            className={`flex-1 sm:flex-none text-center font-bold text-xs px-3 sm:px-4 py-1.5 rounded-lg transition-all ${viewMode === m.value ? "bg-white text-[#044d73]" : "text-white/80 hover:text-white"
+                            key={mode}
+                            type="button"
+                            onClick={() => setViewMode(mode)}
+                            className={`flex-1 sm:flex-none text-center rounded-lg px-3 sm:px-4 py-1.5 text-xs font-bold capitalize transition-all ${viewMode === mode
+                                ? "bg-white text-[#044d73] shadow-sm"
+                                : "text-white/80 hover:text-white hover:bg-white/5"
                                 }`}
                         >
-                            {m.label}
+                            {mode}
                         </button>
                     ))}
                 </div>
             </div>
 
-            {/* Range controls */}
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">Date Range</div>
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <input type="month" value={startMonth} onChange={e => setStartMonth(e.target.value)}
-                        className="flex-1 sm:flex-none rounded-lg py-1.5 px-2 text-xs outline-none border border-slate-200 bg-white text-slate-700 focus:border-[#044d73]" />
-                    <span className="text-xs text-slate-400">to</span>
-                    <input type="month" value={endMonth} onChange={e => setEndMonth(e.target.value)}
-                        className="flex-1 sm:flex-none rounded-lg py-1.5 px-2 text-xs outline-none border border-slate-200 bg-white text-slate-700 focus:border-[#044d73]" />
-                </div>
-            </div>
-
             {loadError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
                     {loadError}
                 </div>
             )}
+
+            {/* Filter & Date Range Bar */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                        <Calendar className="h-4 w-4 text-[#044d73]" />
+                        <span>Date Range:</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        {viewMode === "monthly" ? (
+                            <>
+                                <input
+                                    type="month"
+                                    value={monthFrom}
+                                    max={monthTo || undefined}
+                                    onChange={(e) => setMonthFrom(e.target.value)}
+                                    className="flex-1 sm:flex-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#044d73]"
+                                />
+                                <span className="text-xs text-slate-400">to</span>
+                                <input
+                                    type="month"
+                                    value={monthTo}
+                                    min={monthFrom || undefined}
+                                    onChange={(e) => setMonthTo(e.target.value)}
+                                    className="flex-1 sm:flex-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#044d73]"
+                                />
+                            </>
+                        ) : (
+                            <>
+                                <input
+                                    type="number"
+                                    min={2000}
+                                    max={2100}
+                                    value={yearFrom}
+                                    onChange={(e) => setYearFrom(e.target.value)}
+                                    className="flex-1 sm:flex-none w-24 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#044d73]"
+                                />
+                                <span className="text-xs text-slate-400">to</span>
+                                <input
+                                    type="number"
+                                    min={2000}
+                                    max={2100}
+                                    value={yearTo}
+                                    onChange={(e) => setYearTo(e.target.value)}
+                                    className="flex-1 sm:flex-none w-24 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#044d73]"
+                                />
+                            </>
+                        )}
+                    </div>
+
+                    {isFiltered && (
+                        <button
+                            type="button"
+                            onClick={resetFilters}
+                            className="flex items-center gap-1 text-xs text-[#044d73] hover:underline font-semibold self-start sm:self-auto"
+                        >
+                            <RotateCcw className="h-3 w-3" />
+                            Reset
+                        </button>
+                    )}
+
+                    {loading && <span className="text-xs text-slate-400">Loading…</span>}
+                </div>
+            </div>
 
             {/* Stat cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

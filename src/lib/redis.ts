@@ -11,6 +11,7 @@ declare global {
 export const redis =
   global._redis ??
   new Redis(process.env.REDIS_URL, {
+    lazyConnect: true,
     maxRetriesPerRequest: 3,
   });
 

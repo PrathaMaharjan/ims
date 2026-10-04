@@ -28,6 +28,19 @@ services:
     init: true
     restart: unless-stopped
 
+  db:
+    image: postgres:16-alpine
+    env_file:
+      - ./.env.postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -42,3 +55,4 @@ services:
 
 volumes:
   redis-data:
+  db-data:

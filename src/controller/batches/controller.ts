@@ -421,21 +421,22 @@ export async function updateBatch(
       ? input.quantityAvailable - existing.quantityAvailable
       : 0;
 
-  const updateBatchQuery = db
-    .update(batches)
-    .set(updates)
-    .where(
-      and(eq(batches.id, batchId), eq(batches.organizationId, organizationId)),
-    )
-    .returning();
+  // Both stock changes must commit together.
+  const updated = await db.transaction(async (tx) => {
+    const [updatedBatch] = await tx
+      .update(batches)
+      .set(updates)
+      .where(
+        and(eq(batches.id, batchId), eq(batches.organizationId, organizationId)),
+      )
+      .returning();
 
-  // Batch row and product stock move together — neon-http has no
-  // interactive transactions, so db.batch keeps them atomic.
-  let updated;
-  if (delta !== 0) {
-    [[updated]] = await db.batch([
-      updateBatchQuery,
-      db
+    if (!updatedBatch) {
+      throw new BatchUpdateError("Batch not found", 404);
+    }
+
+    if (delta !== 0) {
+      const [updatedProduct] = await tx
         .update(products)
         .set({ stockQuantity: sql`${products.stockQuantity} + ${delta}` })
         .where(
@@ -443,11 +444,16 @@ export async function updateBatch(
             eq(products.id, existing.productId),
             eq(products.organizationId, organizationId),
           ),
-        ),
-    ]);
-  } else {
-    [updated] = await updateBatchQuery;
-  }
+        )
+        .returning({ id: products.id });
+
+      if (!updatedProduct) {
+        throw new Error("Product not found");
+      }
+    }
+
+    return updatedBatch;
+  });
 
   // Product list/detail are cached with batch-derived stock totals.
   await Promise.all([

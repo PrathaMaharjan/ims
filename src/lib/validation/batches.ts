@@ -12,20 +12,22 @@ export const batchDetailsSchema = z.object({
   salePrice: z.number().nonnegative().optional(),
   partyId: z.string().uuid().optional(), // per-line override; falls back to the purchase's partyId if omitted
 });
-
-export type BatchDetailsInput = z.infer<typeof batchDetailsSchema>;
-
-// Edit of an existing batch from the batches screen. Every field optional —
-// only what's sent gets changed.
-export const updateBatchSchema = z.object({
-  batchNumber: z.string().trim().min(1).max(100).optional(),
-  expiryDate: z.string().min(1).optional(),
-  manufacturingDate: z.string().nullable().optional(),
-  quantityAvailable: z.number().int().nonnegative().optional(),
-  purchasePrice: z.number().nonnegative().optional(),
-  mrp: z.number().nonnegative().optional(),
-  salePrice: z.number().nonnegative().nullable().optional(),
-  note: z.string().max(1000).nullable().optional(),
-});
+const emptyToNull = (v: unknown) => (v === "" ? null : v);
+export const updateBatchSchema = z
+  .object({
+    batchNumber: z.string().trim().min(1).max(100).optional(),
+    expiryDate: z.string().min(1).optional(),
+    manufacturingDate: z.preprocess(emptyToNull, z.string().nullable().optional()),
+    quantityAvailable: z.coerce.number().int().nonnegative().optional(),
+    purchasePrice: z.coerce.number().nonnegative().optional(),
+    mrp: z.coerce.number().nonnegative().optional(),
+    salePrice: z.preprocess(emptyToNull, z.coerce.number().nonnegative().nullable().optional()),
+    note: z.preprocess(emptyToNull, z.string().max(1000).nullable().optional()),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "Nothing to update",
+  });
 
 export type UpdateBatchInput = z.infer<typeof updateBatchSchema>;
+
+export type BatchDetailsInput = z.infer<typeof batchDetailsSchema>;

@@ -241,6 +241,8 @@ export default function BatchesPage() {
   const [amount, setAmount] = useState("");
   // Expiry date of the replacement stock the supplier sent back
   const [newExpiry, setNewExpiry] = useState("");
+  // Manufacturing date of the replacement stock
+  const [newMfg, setNewMfg] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -501,11 +503,17 @@ export default function BatchesPage() {
       const body =
         resolution === "MONEY"
           ? { resolutionType: "MONEY", resolutionAmount: amount ? Number(amount) : defaultAmount }
-          : { resolutionType: "QUANTITY", resolvedBatchId: ret.batchId, expiryDate: newExpiry };
+          : {
+              resolutionType: "QUANTITY",
+              resolvedBatchId: ret.batchId,
+              expiryDate: newExpiry,
+              manufacturingDate: newMfg || undefined,
+            };
       await api.patch(`/api/purchases/returns/${completingId}`, body);
       setCompletingId(null);
       setAmount("");
       setNewExpiry("");
+      setNewMfg("");
       // Stay on the modal so the return flips to "Completed" right here
       refreshAll();
     } catch (err) {
@@ -1152,6 +1160,7 @@ export default function BatchesPage() {
                                       setResolution("MONEY");
                                       setAmount(String(r.quantity * (selectedBatch.purchasePrice || 0)));
                                       setNewExpiry("");
+                                      setNewMfg("");
                                       setActionError("");
                                     }}
                                     className="rounded-lg bg-[#044d73] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#033a57] shadow-xs transition-colors shrink-0"
@@ -1213,6 +1222,18 @@ export default function BatchesPage() {
                                       </p>
                                       <div>
                                         <label className="text-xs font-semibold text-slate-600 block mb-1">
+                                          Manufacturing Date of Replacement Stock
+                                        </label>
+                                        <input
+                                          type="date"
+                                          max={new Date().toLocaleDateString("en-CA")}
+                                          value={newMfg}
+                                          onChange={(e) => setNewMfg(e.target.value)}
+                                          className={inputCls}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-xs font-semibold text-slate-600 block mb-1">
                                           New Expiry Date of Replacement Stock
                                         </label>
                                         <input
@@ -1247,7 +1268,10 @@ export default function BatchesPage() {
                                       disabled={
                                         saving ||
                                         (resolution === "QUANTITY" &&
-                                          (!newExpiry || newExpiry < tomorrow()))
+                                          (!newExpiry ||
+                                            newExpiry < tomorrow() ||
+                                            !newMfg ||
+                                            newMfg >= newExpiry))
                                       }
                                       className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-40"
                                     >

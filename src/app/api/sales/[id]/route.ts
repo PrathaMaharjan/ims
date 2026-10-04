@@ -22,7 +22,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       with: {
         items: { with: { batch: true } },
         party: true,
-        payments: true,
       },
     });
 

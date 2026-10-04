@@ -4,13 +4,14 @@ import { useState, useMemo, useRef, useEffect, Fragment, useCallback } from "rea
 import {
   Plus, X, Pencil, Trash2, Search, ChevronDown, ChevronLeft, ChevronRight,
   Receipt, Wallet, CreditCard, Banknote, PackagePlus, Percent, Boxes, Check,
-  AlertCircle, Calendar, RotateCcw, Printer,
+  AlertCircle, Calendar, RotateCcw, Printer, User, UserPlus, Package,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 import { DotsLoader } from "../_components/ui/dots-loader";
 import { TaxInvoiceModal, TaxInvoiceData, InvoiceItem } from "../_components/TaxInvoiceModal";
 import { PartialPaymentModal } from "../_components/PartialPaymentModal";
+import { AddItemModal, CreatedProductItem } from "../_components/AddItemModal";
 
 /* ------------------------------------------------------------------ */
 /* Types — matches the real backend shapes                             */
@@ -102,6 +103,7 @@ interface Supplier {
   address?: string | null;
   panVatNumber?: string | null;
   paymentTerms?: string | null;
+  notes?: string | null;
   status?: boolean;
 }
 
@@ -385,12 +387,16 @@ function TextInput({ value, onChange, placeholder, required }: {
 
 function ItemPicker({
   value,
+  selectedName,
   onSelect,
   products,
+  onStartNewItem,
 }: {
   value: string;
+  selectedName?: string;
   onSelect: (item: Product) => void;
   products: Product[];
+  onStartNewItem?: (name?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -398,6 +404,7 @@ function ItemPicker({
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const selected = products.find(c => c.id === value) ?? null;
+  const displayName = selected?.name || selectedName || "";
   const filtered = products.filter(c =>
     c.name.toLowerCase().includes(query.toLowerCase()) ||
     (c.aliasName ?? "").toLowerCase().includes(query.toLowerCase())
@@ -442,8 +449,8 @@ function ItemPicker({
         className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
           }`}
       >
-        <span className={`truncate ${selected ? "font-semibold text-slate-800" : "text-slate-400"}`}>
-          {selected ? selected.name : "Select item..."}
+        <span className={`truncate ${displayName ? "font-semibold text-slate-800" : "text-slate-400"}`}>
+          {displayName || "Select item..."}
         </span>
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -453,7 +460,7 @@ function ItemPicker({
           <div className="fixed inset-0 z-[100]" onClick={() => { setOpen(false); setQuery(""); }} />
           <div
             style={{ top: `${coords.top}px`, left: `${coords.left}px`, width: `${coords.width}px` }}
-            className="fixed z-[101] max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl animate-in fade-in-50 zoom-in-95 duration-100"
+            className="fixed z-[101] max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl animate-in fade-in-50 zoom-in-95 duration-100 flex flex-col"
           >
             <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-100 bg-white p-2.5">
               <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -466,27 +473,61 @@ function ItemPicker({
               />
             </div>
             {filtered.length === 0 ? (
-              <p className="p-4 text-center text-xs text-slate-400">No matching items found.</p>
-            ) : (
-              <div className="py-1">
-                {filtered.map(c => (
+              <div className="p-4 text-center">
+                <p className="text-xs text-slate-400 mb-2">No matching items found.</p>
+                {onStartNewItem && (
                   <button
-                    key={c.id}
                     type="button"
-                    onClick={() => { onSelect(c); setOpen(false); setQuery(""); }}
-                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${selected?.id === c.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
-                      }`}
+                    onClick={() => {
+                      const q = query.trim();
+                      setOpen(false);
+                      setQuery("");
+                      onStartNewItem(q);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#044d73] text-white text-xs font-semibold hover:bg-[#033f60] transition-colors"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold">{c.name}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Stock: {c.stockQuantity} {c.unit}
-                        {c.alternativeUnit && ` / ${c.alternativeUnit}`}
-                        {c.manufacturer && ` · ${c.manufacturer}`}
-                      </p>
-                    </div>
+                    <Plus className="w-3.5 h-3.5" /> + Add &ldquo;{query.trim() || "New Item"}&rdquo;
                   </button>
-                ))}
+                )}
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto">
+                <div className="py-1">
+                  {filtered.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => { onSelect(c); setOpen(false); setQuery(""); }}
+                      className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${selected?.id === c.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
+                        }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold">{c.name}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Stock: {c.stockQuantity} {c.unit}
+                          {c.alternativeUnit && ` / ${c.alternativeUnit}`}
+                          {c.manufacturer && ` · ${c.manufacturer}`}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {onStartNewItem && filtered.length > 0 && (
+              <div className="sticky bottom-0 border-t border-slate-100 bg-slate-50 p-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const q = query.trim();
+                    setOpen(false);
+                    setQuery("");
+                    onStartNewItem(q);
+                  }}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#044d73]/40 bg-white hover:bg-[#044d73]/5 py-2 text-xs font-semibold text-[#044d73] transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> + Add New Item {query.trim() ? `"${query.trim()}"` : "to Inventory"}
+                </button>
               </div>
             )}
           </div>
@@ -498,69 +539,134 @@ function ItemPicker({
 
 function SupplierPicker({
   value,
+  selectedName,
   onSelect,
   suppliers,
+  onStartNewParty,
 }: {
   value: string;
-  onSelect: (supplier: Supplier) => void;
+  selectedName?: string;
+  onSelect: (supplier: Supplier | null) => void;
   suppliers: Supplier[];
+  onStartNewParty: (name?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const selected = suppliers.find(s => s.id === value) ?? null;
-  const filtered = suppliers
-    .filter(s => Boolean(s.status))
-    .filter(s => s.name.toLowerCase().includes(query.toLowerCase()));
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const activeSuppliers = suppliers.filter((s) => Boolean(s.status));
+  const filtered = query.trim()
+    ? activeSuppliers.filter(
+        (s) =>
+          s.name.toLowerCase().includes(query.toLowerCase()) ||
+          (s.phone ?? "").includes(query) ||
+          (s.panVatNumber ?? "").includes(query)
+      )
+    : activeSuppliers;
+
+  const exactMatch = activeSuppliers.some((s) => s.name.toLowerCase() === query.trim().toLowerCase());
+  const currentDisplay = open ? query : (selectedName || activeSuppliers.find(s => s.id === value)?.name || "");
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-3 py-1.5 text-left text-sm transition-all ${open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
-          }`}
-      >
-        <span className={`truncate ${selected ? "font-semibold text-slate-800" : "text-slate-400"}`}>
-          {selected ? selected.name : "Select supplier..."}
-        </span>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
+    <div ref={containerRef} className="relative w-full">
+      <div className="relative">
+        <input
+          type="text"
+          value={currentDisplay}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => {
+            setQuery(selectedName || activeSuppliers.find(s => s.id === value)?.name || "");
+            setOpen(true);
+          }}
+          placeholder="Search or select party..."
+          className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 transition-all placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+        />
+        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        {value ? (
+          <button
+            type="button"
+            onClick={() => {
+              onSelect(null);
+              setQuery("");
+            }}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded"
+            title="Clear selection"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+        )}
+      </div>
 
       {open && (
-        <>
-          <div className="fixed inset-0 z-[100]" onClick={() => { setOpen(false); setQuery(""); }} />
-          <div className="absolute z-[101] mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl">
-            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-100 bg-white p-2.5">
-              <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-              <input
-                autoFocus
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Search supplier…"
-                className="w-full text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none"
-              />
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+          {/* Add new party button / option */}
+          <div
+            onClick={() => {
+              onStartNewParty(query.trim());
+              setOpen(false);
+            }}
+            className="flex items-center justify-between border-b border-emerald-100 bg-emerald-50/70 px-3.5 py-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100/80 cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4 text-emerald-600" />
+              <span>
+                {query.trim().length > 0 && !exactMatch ? (
+                  <>Add <strong>&ldquo;{query.trim()}&rdquo;</strong> with details...</>
+                ) : (
+                  <>+ Add New Party</>
+                )}
+              </span>
             </div>
-            {filtered.length === 0 ? (
-              <p className="p-4 text-center text-xs text-slate-400">No matching suppliers found.</p>
-            ) : (
-              <div className="py-1">
-                {filtered.map(s => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => { onSelect(s); setOpen(false); setQuery(""); }}
-                    className={`flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${selected?.id === s.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
-                      }`}
-                  >
-                    <span className="truncate text-xs font-semibold">{s.name}</span>
-                    {s.paymentTerms && <span className="text-[10px] text-slate-400">{s.paymentTerms}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
+            <span className="text-[10px] text-emerald-700 font-normal">Phone, email, address, PAN</span>
           </div>
-        </>
+
+          {filtered.length === 0 && !query.trim() ? (
+            <p className="p-3 text-center text-xs text-slate-400">No active parties registered yet.</p>
+          ) : filtered.length === 0 && query.trim() ? (
+            <p className="p-3 text-center text-xs text-slate-400">No matching parties found.</p>
+          ) : (
+            <div className="py-1">
+              {filtered.map((s) => (
+                <div
+                  key={s.id}
+                  onClick={() => {
+                    onSelect(s);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className={`flex items-center justify-between px-3.5 py-2 text-left text-xs hover:bg-slate-50 cursor-pointer transition-colors ${
+                    value === s.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-800 truncate">{s.name}</p>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 truncate">
+                      {s.phone ? <span>Ph: {s.phone}</span> : <span>No phone</span>}
+                      {s.panVatNumber && <span>· PAN: {s.panVatNumber}</span>}
+                      {s.paymentTerms && <span>· {s.paymentTerms}</span>}
+                    </div>
+                  </div>
+                  {value === s.id && <Check className="h-3.5 w-3.5 text-[#044d73] shrink-0" />}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -614,6 +720,158 @@ export default function PurchasePage() {
     initialAmount?: number;
     existingPayments?: Array<any>;
   } | null>(null);
+
+  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+  const [addItemInitialName, setAddItemInitialName] = useState("");
+  const [targetLineIdForNewItem, setTargetLineIdForNewItem] = useState<string | null>(null);
+
+  const existingBrands = useMemo(
+    () => Array.from(new Set(products.map(p => p.manufacturer?.trim()).filter((b): b is string => Boolean(b)))),
+    [products]
+  );
+
+  function handleStartNewItem(lineId?: string, initialName: string = "") {
+    setTargetLineIdForNewItem(lineId ?? null);
+    setAddItemInitialName(initialName);
+    setIsAddItemModalOpen(true);
+  }
+
+  function handleItemCreated(newProduct: CreatedProductItem) {
+    const formatted: Product = {
+      id: newProduct.id,
+      name: newProduct.name,
+      aliasName: newProduct.aliasName ?? null,
+      manufacturer: newProduct.manufacturer ?? null,
+      hsnCode: newProduct.hsnCode ?? null,
+      unit: newProduct.unit,
+      alternativeUnit: newProduct.alternativeUnit ?? null,
+      stockQuantity: newProduct.stockQuantity ?? 0,
+    };
+    setProducts(prev => {
+      const exists = prev.some(p => p.id === formatted.id);
+      if (exists) return prev;
+      return [formatted, ...prev];
+    });
+
+    let targetId = targetLineIdForNewItem;
+    setForm(p => {
+      // If targetId is not specified or doesn't exist, pick the first empty row
+      if (!targetId || !p.items.some(li => li.id === targetId)) {
+        const emptyLineItem = p.items.find(li => !li.itemId);
+        if (emptyLineItem) {
+          targetId = emptyLineItem.id;
+        }
+      }
+
+      // If all rows already have items selected, append a new line with this product
+      if (!targetId) {
+        const newLine: LineItemForm = {
+          ...emptyLine(),
+          itemId: formatted.id,
+          itemName: formatted.name,
+          unit: formatted.unit,
+          altUnit: formatted.alternativeUnit ?? "",
+          qty: 1,
+          batch: emptyBatch(1),
+        };
+        targetId = newLine.id;
+        setExpandedLineIds(prev => prev.includes(newLine.id) ? prev : [...prev, newLine.id]);
+        return {
+          ...p,
+          items: [...p.items, newLine],
+        };
+      }
+
+      // Auto-select into the target row and expand batch
+      setExpandedLineIds(prev => prev.includes(targetId!) ? prev : [...prev, targetId!]);
+      return {
+        ...p,
+        items: p.items.map(li => {
+          if (li.id !== targetId) return li;
+          return {
+            ...li,
+            itemId: formatted.id,
+            itemName: formatted.name,
+            unit: formatted.unit,
+            altUnit: formatted.alternativeUnit ?? "",
+            qty: li.qty || 1,
+            batch: emptyBatch(li.qty || 1),
+          };
+        }),
+      };
+    });
+
+    setTargetLineIdForNewItem(null);
+  }
+
+  const [showNewPartyInline, setShowNewPartyInline] = useState(false);
+  const [inlineParty, setInlineParty] = useState({
+    name: "",
+    contactPerson: "",
+    phone: "",
+    email: "",
+    panVatNumber: "",
+    paymentTerms: "",
+    address: "",
+  });
+  const [savingInlineParty, setSavingInlineParty] = useState(false);
+  const [inlinePartyError, setInlinePartyError] = useState<string | null>(null);
+
+  async function handleSaveInlineParty() {
+    if (!inlineParty.name.trim()) {
+      setInlinePartyError("Party name is required.");
+      return;
+    }
+    setSavingInlineParty(true);
+    setInlinePartyError(null);
+
+    const payload: {
+      name: string;
+      partyType: "BOTH";
+      contactPerson?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+      panVatNumber?: string;
+      paymentTerms?: string;
+    } = {
+      name: inlineParty.name.trim(),
+      partyType: "BOTH",
+    };
+    if (inlineParty.contactPerson.trim()) payload.contactPerson = inlineParty.contactPerson.trim();
+    if (inlineParty.phone.trim()) payload.phone = inlineParty.phone.trim();
+    if (inlineParty.email.trim()) payload.email = inlineParty.email.trim();
+    if (inlineParty.panVatNumber.trim()) payload.panVatNumber = inlineParty.panVatNumber.trim();
+    if (inlineParty.paymentTerms.trim()) payload.paymentTerms = inlineParty.paymentTerms.trim();
+    if (inlineParty.address.trim()) payload.address = inlineParty.address.trim();
+
+    try {
+      const res = await api.post("/api/parties", payload);
+      const created: Supplier = res.data.party;
+      setSuppliers((prev) => [created, ...prev]);
+      setForm((p) => ({
+        ...p,
+        partyId: created.id,
+        partyName: created.name,
+      }));
+      setShowNewPartyInline(false);
+      setInlineParty({ name: "", contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
+    } catch (err: any) {
+      setInlinePartyError(
+        err?.response?.data?.details?.fieldErrors?.email?.[0] ||
+        err?.response?.data?.error ||
+        "Failed to create party."
+      );
+    } finally {
+      setSavingInlineParty(false);
+    }
+  }
+
+  function handleStartNewPartyInline(initialName: string = "") {
+    setInlineParty({ name: initialName, contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
+    setInlinePartyError(null);
+    setShowNewPartyInline(true);
+  }
 
   function getPurchasePaymentInfo(p: PurchaseRecord) {
     const total = parseFloat(p.grandTotal) || 0;
@@ -803,6 +1061,9 @@ export default function PurchasePage() {
     setForm(emptyForm());
     setExpandedLineIds([]);
     setSaveError(null);
+    setShowNewPartyInline(false);
+    setInlineParty({ name: "", contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
+    setInlinePartyError(null);
     setIsModalOpen(true);
   }
 
@@ -927,6 +1188,9 @@ export default function PurchasePage() {
       roundingDirection: record.roundingDirection ?? "DOWN",
     });
     setExpandedLineIds([]);
+    setShowNewPartyInline(false);
+    setInlineParty({ name: "", contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
+    setInlinePartyError(null);
     setIsModalOpen(true);
   }
 
@@ -935,6 +1199,9 @@ export default function PurchasePage() {
     setEditingPurchaseId(null);
     setExpandedLineIds([]);
     setSaveError(null);
+    setShowNewPartyInline(false);
+    setInlineParty({ name: "", contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
+    setInlinePartyError(null);
   }
 
   function toggleBatchExpand(id: string) {
@@ -1404,7 +1671,7 @@ export default function PurchasePage() {
                 <th className="py-3 px-4">Payment</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Purc Type</th>
-                <th className="py-3 px-4">Supplier</th>
+                <th className="py-3 px-4">Party</th>
                 <th className="py-3 px-4">Items & Batches</th>
                 <th className="py-3 px-4">Qty</th>
                 <th className="py-3 px-4">Amount</th>
@@ -1643,7 +1910,7 @@ export default function PurchasePage() {
                       <option value="UNPAID" className="text-slate-900 bg-white">Unpaid</option>
                     </select>
                   </div>
-                  <p className="text-xs text-white/70 mt-0.5 break-words">Date: {viewingPurchase.purchaseDate} · Supplier: {viewingPurchase.party?.name || "—"}</p>
+                  <p className="text-xs text-white/70 mt-0.5 break-words">Date: {viewingPurchase.purchaseDate} · Party: {viewingPurchase.party?.name || "—"}</p>
                 </div>
               </div>
               <button type="button" onClick={() => setViewingPurchase(null)} className="shrink-0 rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white">
@@ -1897,13 +2164,6 @@ export default function PurchasePage() {
                     <Field label="Supplier Invoice No.">
                       <TextInput value={form.supplierInvoiceNumber} onChange={v => setForm(p => ({ ...p, supplierInvoiceNumber: v }))} placeholder="e.g. INV-2201" />
                     </Field>
-                    <Field label="Supplier">
-                      <SupplierPicker
-                        value={form.partyId}
-                        suppliers={suppliers}
-                        onSelect={s => setForm(p => ({ ...p, partyId: s.id, partyName: s.name }))}
-                      />
-                    </Field>
                     <Field label="Payment Type">
                       <select
                         value={form.paymentType}
@@ -1924,17 +2184,6 @@ export default function PurchasePage() {
                         <option value="MOBILE_PAYMENT">Mobile Payment</option>
                       </select>
                     </Field>
-                    {/* <Field label="Payment Status">
-                      <select
-                        value={form.paymentStatus}
-                        onChange={e => setForm(p => ({ ...p, paymentStatus: e.target.value as PaymentStatus }))}
-                        className={inputCls}
-                      >
-                        <option value="PAID">Paid</option>
-                        <option value="PARTIAL">Partial</option>
-                        <option value="UNPAID">Unpaid</option>
-                      </select>
-                    </Field> */}
                     <Field label="Purc Type" hint="VAT treatment for this purchase">
                       <select
                         value={form.purcType}
@@ -1956,6 +2205,195 @@ export default function PurchasePage() {
                         />
                       </Field>
                     )}
+
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={labelCls}>Party</label>
+                        {!showNewPartyInline ? (
+                          <button
+                            type="button"
+                            onClick={() => handleStartNewPartyInline("")}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#044d73] hover:text-[#033b59] hover:underline cursor-pointer"
+                          >
+                            <UserPlus className="h-3.5 w-3.5" />
+                            <span>+ New Party</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowNewPartyInline(false);
+                              setInlinePartyError(null);
+                            }}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                          >
+                            <span>Back to party search</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {showNewPartyInline ? (
+                        <div className="rounded-xl border border-[#044d73]/25 bg-slate-50/80 p-4 space-y-3.5 animate-in fade-in duration-150">
+                          <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
+                            <div className="flex items-center gap-2 text-xs font-bold text-[#044d73]">
+                              <UserPlus className="w-4 h-4" />
+                              <span>Add New Party Details</span>
+                            </div>
+                            <span className="text-[11px] text-slate-400">Saved to party catalog</span>
+                          </div>
+
+                          {inlinePartyError && (
+                            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 font-medium">
+                              {inlinePartyError}
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Party Name <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                autoFocus
+                                type="text"
+                                value={inlineParty.name}
+                                onChange={(e) => setInlineParty((p) => ({ ...p, name: e.target.value }))}
+                                placeholder="e.g. Acme Pharmaceuticals"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Contact Person (optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={inlineParty.contactPerson}
+                                onChange={(e) => setInlineParty((p) => ({ ...p, contactPerson: e.target.value }))}
+                                placeholder="e.g. Sales Manager / Rep"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Phone Number
+                              </label>
+                              <input
+                                type="tel"
+                                value={inlineParty.phone}
+                                onChange={(e) => setInlineParty((p) => ({ ...p, phone: e.target.value }))}
+                                placeholder="e.g. 9841234567"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                PAN / VAT Number (optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={inlineParty.panVatNumber}
+                                onChange={(e) => setInlineParty((p) => ({ ...p, panVatNumber: e.target.value }))}
+                                placeholder="e.g. 601234567"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Email (optional)
+                              </label>
+                              <input
+                                type="email"
+                                value={inlineParty.email}
+                                onChange={(e) => setInlineParty((p) => ({ ...p, email: e.target.value }))}
+                                placeholder="e.g. supplier@example.com"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Payment Terms (optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={inlineParty.paymentTerms}
+                                onChange={(e) => setInlineParty((p) => ({ ...p, paymentTerms: e.target.value }))}
+                                placeholder="e.g. Net 30, Advance 50%"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Address (optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={inlineParty.address}
+                                onChange={(e) => setInlineParty((p) => ({ ...p, address: e.target.value }))}
+                                placeholder="e.g. Kathmandu, Nepal"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/80">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowNewPartyInline(false);
+                                setInlinePartyError(null);
+                              }}
+                              className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingInlineParty || !inlineParty.name.trim()}
+                              onClick={handleSaveInlineParty}
+                              className="px-4 py-1.5 text-xs font-semibold text-white bg-[#044d73] hover:bg-[#033f60] rounded-lg shadow-sm transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                              {savingInlineParty ? "Saving..." : "Save Party"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <SupplierPicker
+                            value={form.partyId}
+                            selectedName={form.partyName}
+                            suppliers={suppliers}
+                            onSelect={(s) => setForm(p => ({ ...p, partyId: s ? s.id : "", partyName: s ? s.name : "" }))}
+                            onStartNewParty={handleStartNewPartyInline}
+                          />
+                          {form.partyId && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[11px] text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                              {(() => {
+                                const s = suppliers.find((x) => x.id === form.partyId);
+                                if (!s) return null;
+                                return (
+                                  <>
+                                    <span className="font-semibold text-slate-700">{s.name}</span>
+                                    {s.contactPerson && <span className="text-slate-600">👤 {s.contactPerson}</span>}
+                                    {s.phone && <span className="text-slate-600">📞 {s.phone}</span>}
+                                    {s.email && <span className="text-slate-600">✉️ {s.email}</span>}
+                                    {s.address && <span className="text-slate-600">📍 {s.address}</span>}
+                                    {s.panVatNumber && <span className="text-slate-600">🏛️ PAN: {s.panVatNumber}</span>}
+                                    {s.paymentTerms && <span className="text-slate-600">💳 Terms: {s.paymentTerms}</span>}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div className="mt-4">
                     <Field label="Purchase Note / Remarks">
@@ -2001,7 +2439,9 @@ export default function PurchasePage() {
                                   <td className="py-3 px-3">
                                     <ItemPicker
                                       value={line.itemId}
+                                      selectedName={line.itemName}
                                       products={products}
+                                      onStartNewItem={(name) => handleStartNewItem(line.id, name)}
                                       onSelect={product => {
                                         updateLine(line.id, {
                                           itemId: product.id,
@@ -2182,9 +2622,18 @@ export default function PurchasePage() {
                     </div>
 
                     <div className="border-t border-slate-100 bg-slate-50/50 p-3 px-4 flex items-center justify-between">
-                      <button type="button" onClick={addLine} className="flex items-center gap-2 rounded-lg bg-[#044d73]/10 hover:bg-[#044d73]/20 px-3.5 py-2 text-xs font-semibold text-[#044d73] transition-colors">
-                        <Plus className="w-4 h-4" /> Add Item
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={addLine} className="flex items-center gap-2 rounded-lg bg-[#044d73]/10 hover:bg-[#044d73]/20 px-3.5 py-2 text-xs font-semibold text-[#044d73] transition-colors">
+                          <Plus className="w-4 h-4" /> Add Item
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStartNewItem()}
+                          className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-white hover:bg-[#044d73]/5 px-3 py-2 text-xs font-semibold text-[#044d73] transition-colors"
+                        >
+                          <Package className="w-3.5 h-3.5" /> + New Item Catalog
+                        </button>
+                      </div>
                       <span className="text-[11px] text-slate-400 font-medium">
                         {form.items.length} item row{form.items.length !== 1 ? "s" : ""}
                       </span>
@@ -2367,6 +2816,14 @@ export default function PurchasePage() {
           onConfirm={handleConfirmPartialPayment}
         />
       )}
+      {/* Add New Item Modal */}
+      <AddItemModal
+        isOpen={isAddItemModalOpen}
+        onClose={() => setIsAddItemModalOpen(false)}
+        initialName={addItemInitialName}
+        onSuccess={handleItemCreated}
+        existingBrands={existingBrands}
+      />
     </div>
   );
 }

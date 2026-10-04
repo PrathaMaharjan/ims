@@ -15,6 +15,7 @@ export class PurchaseReturnError extends Error {
       | "RESOLVED_BATCH_NOT_FOUND"
       | "RESOLVED_BATCH_WRONG_PRODUCT"
       | "INVALID_EXPIRY"
+      | "INVALID_MANUFACTURING_DATE"
       | "INVALID_AMOUNT",
   ) {
     super(message);
@@ -569,6 +570,14 @@ export async function completePurchaseReturn(
     );
   }
 
+  // Manufacturing date (if given) must be before the expiry date.
+  if (input.manufacturingDate && input.manufacturingDate >= input.expiryDate) {
+    throw new PurchaseReturnError(
+      "Manufacturing date must be before the expiry date",
+      "INVALID_MANUFACTURING_DATE",
+    );
+  }
+
   // Claim the return first (PENDING only), so a second request can't add the
   // replacement stock a second time.
   const [updated] = await db
@@ -599,6 +608,7 @@ export async function completePurchaseReturn(
     .set({
       quantityAvailable: sql`${batches.quantityAvailable} + ${existing.quantity}`,
       expiryDate: input.expiryDate,
+      ...(input.manufacturingDate && { manufacturingDate: input.manufacturingDate }),
       status: "ACTIVE",
       updatedAt: new Date(),
     })

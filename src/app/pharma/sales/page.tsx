@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Plus, X, Pencil, Trash2, Search, ChevronDown, ChevronLeft, ChevronRight,
   ShoppingCart, Wallet, CreditCard, Banknote, PackageCheck, Percent, Boxes, Check,
-  AlertCircle, User, UserPlus, Printer,
+  AlertCircle, User, UserPlus, Printer, Package,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
@@ -97,10 +97,13 @@ interface ApiBatch {
 interface Customer {
   id: string;
   name: string;
+  contactPerson?: string | null;
   phone: string | null;
   email?: string | null;
   address?: string | null;
   panVatNumber?: string | null;
+  paymentTerms?: string | null;
+  notes?: string | null;
   status?: boolean;
 }
 
@@ -404,7 +407,13 @@ function CustomerCombobox({
   const activeCustomers = customers.filter((c) => Boolean(c.status));
 
   const filtered = query.trim()
-    ? activeCustomers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || (c.phone ?? "").includes(query))
+    ? activeCustomers.filter(
+        (c) =>
+          c.name.toLowerCase().includes(query.toLowerCase()) ||
+          (c.phone ?? "").includes(query) ||
+          (c.panVatNumber ?? "").includes(query) ||
+          (c.contactPerson ?? "").toLowerCase().includes(query.toLowerCase())
+      )
     : activeCustomers;
 
   const exactMatch = activeCustomers.some((c) => c.name.toLowerCase() === query.trim().toLowerCase());
@@ -417,7 +426,7 @@ function CustomerCombobox({
           value={open ? query : selectedName}
           onChange={(e) => { setQuery(e.target.value); if (!open) setOpen(true); }}
           onFocus={() => { setQuery(selectedName); setOpen(true); }}
-          placeholder="Search or select customer..."
+          placeholder="Search or select party..."
           className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 transition-all placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
         />
         <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -440,7 +449,7 @@ function CustomerCombobox({
             <span className="text-[10px] text-slate-400 italic">No account needed</span>
           </div>
 
-          {/* Add new customer button / option */}
+          {/* Add new party button / option */}
           <div
             onClick={() => {
               onStartNewCustomer(query.trim());
@@ -454,17 +463,17 @@ function CustomerCombobox({
                 {query.trim().length > 0 && !exactMatch ? (
                   <>Add <strong>&ldquo;{query.trim()}&rdquo;</strong> with details...</>
                 ) : (
-                  <>+ Add New Customer</>
+                  <>+ Add New Party</>
                 )}
               </span>
             </div>
-            <span className="text-[10px] text-emerald-700 font-normal">Phone, email, address</span>
+            <span className="text-[10px] text-emerald-700 font-normal">Phone, email, address, PAN</span>
           </div>
 
           {filtered.length === 0 && !query.trim() ? (
-            <p className="p-3 text-center text-xs text-slate-400">No active customers registered yet.</p>
+            <p className="p-3 text-center text-xs text-slate-400">No active parties registered yet.</p>
           ) : filtered.length === 0 && query.trim() ? (
-            <p className="p-3 text-center text-xs text-slate-400">No matching customers found.</p>
+            <p className="p-3 text-center text-xs text-slate-400">No matching parties found.</p>
           ) : (
             <div className="py-1">
               {filtered.map((c) => (
@@ -478,7 +487,9 @@ function CustomerCombobox({
                     <p className="font-medium text-slate-800 truncate">{c.name}</p>
                     <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 truncate">
                       {c.phone ? <span>Ph: {c.phone}</span> : <span>No phone</span>}
-                      {c.address && <span>• {c.address}</span>}
+                      {c.panVatNumber && <span>· PAN: {c.panVatNumber}</span>}
+                      {c.paymentTerms && <span>· {c.paymentTerms}</span>}
+                      {c.address && <span>· {c.address}</span>}
                     </div>
                   </div>
                   {selectedId === c.id && <Check className="h-4 w-4 text-[#044d73] shrink-0" />}
@@ -496,13 +507,24 @@ function CustomerCombobox({
 /* Item Picker — searches the already-loaded products list              */
 /* ------------------------------------------------------------------ */
 
-function ItemPicker({ products, value, onSelect }: { products: Product[]; value: string; onSelect: (item: Product) => void }) {
+function ItemPicker({
+  products,
+  value,
+  selectedName,
+  onSelect,
+}: {
+  products: Product[];
+  value: string;
+  selectedName?: string;
+  onSelect: (item: Product) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const selected = products.find((p) => p.id === value) ?? null;
+  const displayName = selected?.name || selectedName || "";
   const filtered = products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) || (p.aliasName ?? "").toLowerCase().includes(query.toLowerCase()));
 
   function toggleOpen() {
@@ -541,8 +563,8 @@ function ItemPicker({ products, value, onSelect }: { products: Product[]; value:
         className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
           }`}
       >
-        <span className={`truncate ${selected ? "font-semibold text-slate-800" : "text-slate-400"}`}>
-          {selected ? selected.name : "Select item to sell..."}
+        <span className={`truncate ${displayName ? "font-semibold text-slate-800" : "text-slate-400"}`}>
+          {displayName || "Select item to sell..."}
         </span>
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -805,25 +827,47 @@ export default function SalesPage() {
     return true;
   });
 
+
+
   const [showNewCustomerInline, setShowNewCustomerInline] = useState(false);
-  const [inlineCust, setInlineCust] = useState({ name: "", phone: "", email: "", address: "" });
+  const [inlineCust, setInlineCust] = useState({
+    name: "",
+    contactPerson: "",
+    phone: "",
+    email: "",
+    panVatNumber: "",
+    paymentTerms: "",
+    address: "",
+  });
   const [savingInlineCust, setSavingInlineCust] = useState(false);
   const [inlineCustError, setInlineCustError] = useState<string | null>(null);
 
   async function handleSaveInlineCustomer() {
     if (!inlineCust.name.trim()) {
-      setInlineCustError("Customer name is required.");
+      setInlineCustError("Party name is required.");
       return;
     }
     setSavingInlineCust(true);
     setInlineCustError(null);
 
-    const payload: { name: string; partyType: "CUSTOMER"; phone?: string; email?: string; address?: string } = {
+    const payload: {
+      name: string;
+      partyType: "BOTH";
+      contactPerson?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+      panVatNumber?: string;
+      paymentTerms?: string;
+    } = {
       name: inlineCust.name.trim(),
-      partyType: "CUSTOMER",
+      partyType: "BOTH",
     };
+    if (inlineCust.contactPerson.trim()) payload.contactPerson = inlineCust.contactPerson.trim();
     if (inlineCust.phone.trim()) payload.phone = inlineCust.phone.trim();
     if (inlineCust.email.trim()) payload.email = inlineCust.email.trim();
+    if (inlineCust.panVatNumber.trim()) payload.panVatNumber = inlineCust.panVatNumber.trim();
+    if (inlineCust.paymentTerms.trim()) payload.paymentTerms = inlineCust.paymentTerms.trim();
     if (inlineCust.address.trim()) payload.address = inlineCust.address.trim();
 
     try {
@@ -836,12 +880,12 @@ export default function SalesPage() {
         partyName: created.name,
       }));
       setShowNewCustomerInline(false);
-      setInlineCust({ name: "", phone: "", email: "", address: "" });
+      setInlineCust({ name: "", contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
     } catch (err: any) {
       setInlineCustError(
         err?.response?.data?.details?.fieldErrors?.email?.[0] ||
         err?.response?.data?.error ||
-        "Failed to create customer."
+        "Failed to create party."
       );
     } finally {
       setSavingInlineCust(false);
@@ -849,7 +893,7 @@ export default function SalesPage() {
   }
 
   function handleStartNewCustomerInline(initialName: string = "") {
-    setInlineCust({ name: initialName, phone: "", email: "", address: "" });
+    setInlineCust({ name: initialName, contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
     setInlineCustError(null);
     setShowNewCustomerInline(true);
   }
@@ -861,7 +905,7 @@ export default function SalesPage() {
     setForm(emptyForm());
     setSaveError(null);
     setShowNewCustomerInline(false);
-    setInlineCust({ name: "", phone: "", email: "", address: "" });
+    setInlineCust({ name: "", contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
     setInlineCustError(null);
     setIsModalOpen(true);
   }
@@ -1004,7 +1048,7 @@ export default function SalesPage() {
     setEditingSaleId(null);
     setSaveError(null);
     setShowNewCustomerInline(false);
-    setInlineCust({ name: "", phone: "", email: "", address: "" });
+    setInlineCust({ name: "", contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
     setInlineCustError(null);
   }
 
@@ -1380,7 +1424,7 @@ export default function SalesPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search this page by invoice, customer, or note"
+            placeholder="Search this page by invoice, party, or note"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
@@ -1439,7 +1483,7 @@ export default function SalesPage() {
                 <th className="py-3 px-4">Invoice No.</th>
                 <th className="py-3 px-4">Payment</th>
                 <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Customer</th>
+                <th className="py-3 px-4">Party</th>
                 <th className="py-3 px-4">Items & Dispensed Batches</th>
                 <th className="py-3 px-4">Total Qty</th>
                 <th className="py-3 px-4">Amount</th>
@@ -1625,7 +1669,7 @@ export default function SalesPage() {
                       <option value="UNPAID" className="text-slate-900 bg-white">Unpaid</option>
                     </select>
                   </div>
-                  <p className="text-xs text-white/70 mt-0.5">Date: {viewingSale.saleDate.slice(0, 10)} · Customer: {viewingSale.party?.name || "Walk-in Cash Customer"}</p>
+                  <p className="text-xs text-white/70 mt-0.5">Date: {viewingSale.saleDate.slice(0, 10)} · Party: {viewingSale.party?.name || "Walk-in Cash Customer"}</p>
                 </div>
               </div>
               <button type="button" onClick={() => setViewingSale(null)} className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white"><X className="w-5 h-5" /></button>
@@ -1642,7 +1686,7 @@ export default function SalesPage() {
                   <span className="font-semibold text-slate-800 text-sm mt-0.5 block">{viewingSale.saleDate.slice(0, 10)}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium uppercase text-[10px]">Customer</span>
+                  <span className="text-slate-400 block font-medium uppercase text-[10px]">Party</span>
                   <span className="font-semibold text-slate-800 text-sm mt-0.5 block">{viewingSale.party?.name || "Walk-in Cash"}</span>
                 </div>
                 <div>
@@ -1853,7 +1897,7 @@ export default function SalesPage() {
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10"><ShoppingCart className="h-6 w-6" /></div>
                 <div>
                   <h3 className="text-xl font-semibold">{editingSaleId ? "Edit Sales Voucher" : "Add Sale"}</h3>
-                  <p className="text-xs text-white/70">Invoice number is assigned automatically; select customer, items, and batch details</p>
+                  <p className="text-xs text-white/70">Invoice number is assigned automatically; select party, items, and batch details</p>
                 </div>
               </div>
               <button type="button" onClick={closeModal} className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white"><X className="w-5 h-5" /></button>
@@ -1863,7 +1907,7 @@ export default function SalesPage() {
               <div className="flex-1 space-y-6 overflow-y-auto p-7">
                 {saveError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600 font-medium">{saveError}</div>}
 
-                <Section title="Voucher & Customer" icon={<ShoppingCart className="w-3.5 h-3.5" />}>
+                <Section title="Voucher & Party" icon={<ShoppingCart className="w-3.5 h-3.5" />}>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="Date">
                       <input type="date" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} className={inputCls} />
@@ -1895,7 +1939,7 @@ export default function SalesPage() {
 
                     <div className="sm:col-span-3">
                       <div className="flex items-center justify-between mb-1.5">
-                        <label className={labelCls}>Customer</label>
+                        <label className={labelCls}>Party</label>
                         {!showNewCustomerInline ? (
                           <button
                             type="button"
@@ -1903,7 +1947,7 @@ export default function SalesPage() {
                             className="inline-flex items-center gap-1 text-xs font-semibold text-[#044d73] hover:text-[#033b59] hover:underline cursor-pointer"
                           >
                             <UserPlus className="h-3.5 w-3.5" />
-                            <span>+ New Customer</span>
+                            <span>+ New Party</span>
                           </button>
                         ) : (
                           <button
@@ -1914,7 +1958,7 @@ export default function SalesPage() {
                             }}
                             className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
                           >
-                            <span>Back to customer search</span>
+                            <span>Back to party search</span>
                           </button>
                         )}
                       </div>
@@ -1924,9 +1968,9 @@ export default function SalesPage() {
                           <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
                             <div className="flex items-center gap-2 text-xs font-bold text-[#044d73]">
                               <UserPlus className="w-4 h-4" />
-                              <span>Add New Customer Details</span>
+                              <span>Add New Party Details</span>
                             </div>
-                            <span className="text-[11px] text-slate-400">Saved to customer catalog</span>
+                            <span className="text-[11px] text-slate-400">Saved to party catalog</span>
                           </div>
 
                           {inlineCustError && (
@@ -1938,7 +1982,7 @@ export default function SalesPage() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                               <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                                Customer Name <span className="text-red-500">*</span>
+                                Party Name <span className="text-red-500">*</span>
                               </label>
                               <input
                                 autoFocus
@@ -1946,6 +1990,19 @@ export default function SalesPage() {
                                 value={inlineCust.name}
                                 onChange={(e) => setInlineCust((p) => ({ ...p, name: e.target.value }))}
                                 placeholder="e.g. Ram Bahadur"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Contact Person (optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={inlineCust.contactPerson}
+                                onChange={(e) => setInlineCust((p) => ({ ...p, contactPerson: e.target.value }))}
+                                placeholder="e.g. Manager / Rep name"
                                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                               />
                             </div>
@@ -1965,13 +2022,39 @@ export default function SalesPage() {
 
                             <div>
                               <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                PAN / VAT Number (optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={inlineCust.panVatNumber}
+                                onChange={(e) => setInlineCust((p) => ({ ...p, panVatNumber: e.target.value }))}
+                                placeholder="e.g. 601234567"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                                 Email (optional)
                               </label>
                               <input
                                 type="email"
                                 value={inlineCust.email}
                                 onChange={(e) => setInlineCust((p) => ({ ...p, email: e.target.value }))}
-                                placeholder="e.g. ram@example.com"
+                                placeholder="e.g. customer@example.com"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Payment Terms (optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={inlineCust.paymentTerms}
+                                onChange={(e) => setInlineCust((p) => ({ ...p, paymentTerms: e.target.value }))}
+                                placeholder="e.g. Net 30, Cash on Delivery"
                                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
                               />
                             </div>
@@ -2007,7 +2090,7 @@ export default function SalesPage() {
                               onClick={handleSaveInlineCustomer}
                               className="px-4 py-1.5 text-xs font-semibold text-white bg-[#044d73] hover:bg-[#033f60] rounded-lg shadow-sm transition-colors disabled:opacity-50 flex items-center gap-1.5"
                             >
-                              {savingInlineCust ? "Saving..." : "Save Customer"}
+                              {savingInlineCust ? "Saving..." : "Save Party"}
                             </button>
                           </div>
                         </div>
@@ -2028,9 +2111,12 @@ export default function SalesPage() {
                                 return (
                                   <>
                                     <span className="font-semibold text-slate-700">{c.name}</span>
+                                    {c.contactPerson && <span className="text-slate-600">👤 {c.contactPerson}</span>}
                                     {c.phone && <span className="text-slate-600">📞 {c.phone}</span>}
                                     {c.email && <span className="text-slate-600">✉️ {c.email}</span>}
                                     {c.address && <span className="text-slate-600">📍 {c.address}</span>}
+                                    {c.panVatNumber && <span className="text-slate-600">🏛️ PAN: {c.panVatNumber}</span>}
+                                    {c.paymentTerms && <span className="text-slate-600">💳 Terms: {c.paymentTerms}</span>}
                                   </>
                                 );
                               })()}
@@ -2067,7 +2153,12 @@ export default function SalesPage() {
                               <tr key={line.id} className={`transition-colors ${exceedsStock ? "bg-red-50/40" : "hover:bg-slate-50/50"}`}>
                                 <td className="py-3 px-3 text-center font-medium text-slate-400">{idx + 1}</td>
                                 <td className="py-3 px-3">
-                                  <ItemPicker products={products} value={line.productId} onSelect={(p) => handleSelectItem(line.id, p)} />
+                                  <ItemPicker
+                                    products={products}
+                                    value={line.productId}
+                                    selectedName={line.productName}
+                                    onSelect={(p) => handleSelectItem(line.id, p)}
+                                  />
                                 </td>
                                 <td className="py-3 px-3">
                                   {!line.productId ? (

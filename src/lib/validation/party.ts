@@ -21,7 +21,7 @@ export const updatePartySchema = createPartySchema.partial();
 // SUPPLIER + BOTH, CUSTOMER returns CUSTOMER + BOTH. Omit it to list everyone.
 export const listPartiesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(200).default(20),
   search: z.string().optional(),
   type: z.enum(["SUPPLIER", "CUSTOMER"]).optional(),
 });

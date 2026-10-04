@@ -9,11 +9,11 @@ async function seed() {
   const [org] = await db
     .insert(organizations)
     .values({
-      businessName: "pharma",
-      panVatNumber: "301234567",
+      businessName: "AJAMBARI PHARMACEUTICALS",
+      panVatNumber: "0000000",
       vatRegistered: true,
-      address: "Kathmandu, Nepal",
-      phone: "9800000000",
+      address: "Sanepa, Nepal",
+      phone: "9860468585",
       email: "info@citypharmacy.com",
     })
     .returning();
@@ -24,8 +24,8 @@ async function seed() {
     .insert(users)
     .values({
       organizationId: org.id,
-      name: "Sophan",
-      email: "owner@gmail.com",
+      name: "Binamra Rai",
+      email: "example@gmail.com",
       passwordHash,
       isOwner: true,
     })
@@ -33,7 +33,7 @@ async function seed() {
 
   console.log("Seeded organization:", org.id);
   console.log("Seeded owner user:", owner.id, owner.email);
-  console.log("Login with: owner@gmail.com / Password123");
+  console.log("Login with: example@gmail.com / Password123");
 }
 
 seed()

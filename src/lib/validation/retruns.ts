@@ -13,6 +13,11 @@ export const completePurchaseReturnSchema = z.discriminatedUnion("resolutionType
     resolvedBatchId: z.string().uuid(),
     // Expiry of the replacement stock — becomes the batch's new expiry date
     expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+    // Manufacturing date of the replacement stock (optional)
+    manufacturingDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
+      .optional(),
   }),
   z.object({
     resolutionType: z.literal("MONEY"),

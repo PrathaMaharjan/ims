@@ -28,6 +28,7 @@ FROM deps AS migrator
 COPY drizzle.config.ts ./
 COPY src/db/schema ./src/db/schema
 COPY drizzle ./drizzle
+COPY scripts/bootstrap-owner.mjs ./scripts/bootstrap-owner.mjs
 CMD ["pnpm", "db:migrate"]
 
 FROM node:22-bookworm-slim AS runner

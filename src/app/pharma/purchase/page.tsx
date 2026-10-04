@@ -387,11 +387,13 @@ function TextInput({ value, onChange, placeholder, required }: {
 
 function ItemPicker({
   value,
+  selectedName,
   onSelect,
   products,
   onStartNewItem,
 }: {
   value: string;
+  selectedName?: string;
   onSelect: (item: Product) => void;
   products: Product[];
   onStartNewItem?: (name?: string) => void;
@@ -402,6 +404,7 @@ function ItemPicker({
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const selected = products.find(c => c.id === value) ?? null;
+  const displayName = selected?.name || selectedName || "";
   const filtered = products.filter(c =>
     c.name.toLowerCase().includes(query.toLowerCase()) ||
     (c.aliasName ?? "").toLowerCase().includes(query.toLowerCase())
@@ -446,8 +449,8 @@ function ItemPicker({
         className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
           }`}
       >
-        <span className={`truncate ${selected ? "font-semibold text-slate-800" : "text-slate-400"}`}>
-          {selected ? selected.name : "Select item..."}
+        <span className={`truncate ${displayName ? "font-semibold text-slate-800" : "text-slate-400"}`}>
+          {displayName || "Select item..."}
         </span>
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -750,19 +753,55 @@ export default function PurchasePage() {
       return [formatted, ...prev];
     });
 
-    if (targetLineIdForNewItem) {
-      updateLine(targetLineIdForNewItem, {
-        itemId: formatted.id,
-        itemName: formatted.name,
-        unit: formatted.unit,
-        altUnit: formatted.alternativeUnit ?? "",
-        qty: 1,
-        batch: emptyBatch(1),
-      });
-      if (!expandedLineIds.includes(targetLineIdForNewItem)) {
-        setExpandedLineIds(prev => [...prev, targetLineIdForNewItem]);
+    let targetId = targetLineIdForNewItem;
+    setForm(p => {
+      // If targetId is not specified or doesn't exist, pick the first empty row
+      if (!targetId || !p.items.some(li => li.id === targetId)) {
+        const emptyLineItem = p.items.find(li => !li.itemId);
+        if (emptyLineItem) {
+          targetId = emptyLineItem.id;
+        }
       }
-    }
+
+      // If all rows already have items selected, append a new line with this product
+      if (!targetId) {
+        const newLine: LineItemForm = {
+          ...emptyLine(),
+          itemId: formatted.id,
+          itemName: formatted.name,
+          unit: formatted.unit,
+          altUnit: formatted.alternativeUnit ?? "",
+          qty: 1,
+          batch: emptyBatch(1),
+        };
+        targetId = newLine.id;
+        setExpandedLineIds(prev => prev.includes(newLine.id) ? prev : [...prev, newLine.id]);
+        return {
+          ...p,
+          items: [...p.items, newLine],
+        };
+      }
+
+      // Auto-select into the target row and expand batch
+      setExpandedLineIds(prev => prev.includes(targetId!) ? prev : [...prev, targetId!]);
+      return {
+        ...p,
+        items: p.items.map(li => {
+          if (li.id !== targetId) return li;
+          return {
+            ...li,
+            itemId: formatted.id,
+            itemName: formatted.name,
+            unit: formatted.unit,
+            altUnit: formatted.alternativeUnit ?? "",
+            qty: li.qty || 1,
+            batch: emptyBatch(li.qty || 1),
+          };
+        }),
+      };
+    });
+
+    setTargetLineIdForNewItem(null);
   }
 
   const [showNewPartyInline, setShowNewPartyInline] = useState(false);
@@ -788,7 +827,7 @@ export default function PurchasePage() {
 
     const payload: {
       name: string;
-      partyType: "SUPPLIER";
+      partyType: "BOTH";
       contactPerson?: string;
       phone?: string;
       email?: string;
@@ -797,7 +836,7 @@ export default function PurchasePage() {
       paymentTerms?: string;
     } = {
       name: inlineParty.name.trim(),
-      partyType: "SUPPLIER",
+      partyType: "BOTH",
     };
     if (inlineParty.contactPerson.trim()) payload.contactPerson = inlineParty.contactPerson.trim();
     if (inlineParty.phone.trim()) payload.phone = inlineParty.phone.trim();
@@ -2400,6 +2439,7 @@ export default function PurchasePage() {
                                   <td className="py-3 px-3">
                                     <ItemPicker
                                       value={line.itemId}
+                                      selectedName={line.itemName}
                                       products={products}
                                       onStartNewItem={(name) => handleStartNewItem(line.id, name)}
                                       onSelect={product => {

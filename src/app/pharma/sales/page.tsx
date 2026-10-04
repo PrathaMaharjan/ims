@@ -10,7 +10,6 @@ import { api } from "@/lib/api-client";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 import { TaxInvoiceModal, TaxInvoiceData, InvoiceItem } from "../_components/TaxInvoiceModal";
 import { PartialPaymentModal } from "../_components/PartialPaymentModal";
-import { AddItemModal, CreatedProductItem } from "../_components/AddItemModal";
 
 /* ------------------------------------------------------------------ */
 /* Types — matches the real backend                                    */
@@ -511,13 +510,13 @@ function CustomerCombobox({
 function ItemPicker({
   products,
   value,
+  selectedName,
   onSelect,
-  onStartNewItem,
 }: {
   products: Product[];
   value: string;
+  selectedName?: string;
   onSelect: (item: Product) => void;
-  onStartNewItem?: (name?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -525,6 +524,7 @@ function ItemPicker({
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const selected = products.find((p) => p.id === value) ?? null;
+  const displayName = selected?.name || selectedName || "";
   const filtered = products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) || (p.aliasName ?? "").toLowerCase().includes(query.toLowerCase()));
 
   function toggleOpen() {
@@ -563,8 +563,8 @@ function ItemPicker({
         className={`flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs sm:text-sm transition-all ${open ? "border-[#044d73] ring-2 ring-[#044d73]/20 bg-white" : "border-slate-200 bg-white hover:border-slate-300"
           }`}
       >
-        <span className={`truncate ${selected ? "font-semibold text-slate-800" : "text-slate-400"}`}>
-          {selected ? selected.name : "Select item to sell..."}
+        <span className={`truncate ${displayName ? "font-semibold text-slate-800" : "text-slate-400"}`}>
+          {displayName || "Select item to sell..."}
         </span>
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -574,64 +574,30 @@ function ItemPicker({
           <div className="fixed inset-0 z-[100]" onClick={() => { setOpen(false); setQuery(""); }} />
           <div
             style={{ top: `${coords.top}px`, left: `${coords.left}px`, width: `${coords.width}px` }}
-            className="fixed z-[101] max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl animate-in fade-in-50 zoom-in-95 duration-100 flex flex-col"
+            className="fixed z-[101] max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl"
           >
             <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-100 bg-white p-2.5">
               <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
               <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search medicine item…" className="w-full text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none" />
             </div>
             {filtered.length === 0 ? (
-              <div className="p-4 text-center">
-                <p className="text-xs text-slate-400 mb-2">No matching items found.</p>
-                {onStartNewItem && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const q = query.trim();
-                      setOpen(false);
-                      setQuery("");
-                      onStartNewItem(q);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#044d73] text-white text-xs font-semibold hover:bg-[#033f60] transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> + Add &ldquo;{query.trim() || "New Item"}&rdquo;
-                  </button>
-                )}
-              </div>
+              <p className="p-4 text-center text-xs text-slate-400">No matching items found.</p>
             ) : (
-              <div className="flex-1 overflow-y-auto">
-                <div className="py-1">
-                  {filtered.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => { onSelect(p); setOpen(false); setQuery(""); }}
-                      className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${selected?.id === p.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
-                        }`}
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold">{p.name}</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Stock: {p.stockQuantity} {p.unit}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {onStartNewItem && filtered.length > 0 && (
-              <div className="sticky bottom-0 border-t border-slate-100 bg-slate-50 p-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const q = query.trim();
-                    setOpen(false);
-                    setQuery("");
-                    onStartNewItem(q);
-                  }}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#044d73]/40 bg-white hover:bg-[#044d73]/5 py-2 text-xs font-semibold text-[#044d73] transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" /> + Add New Item {query.trim() ? `"${query.trim()}"` : "to Inventory"}
-                </button>
+              <div className="py-1">
+                {filtered.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => { onSelect(p); setOpen(false); setQuery(""); }}
+                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${selected?.id === p.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
+                      }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold">{p.name}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Stock: {p.stockQuantity} {p.unit}</p>
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -861,42 +827,7 @@ export default function SalesPage() {
     return true;
   });
 
-  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
-  const [addItemInitialName, setAddItemInitialName] = useState("");
-  const [targetLineIdForNewItem, setTargetLineIdForNewItem] = useState<string | null>(null);
 
-  const existingBrands = useMemo(
-    () => Array.from(new Set(products.map((p) => p.manufacturer?.trim()).filter((b): b is string => Boolean(b)))),
-    [products]
-  );
-
-  function handleStartNewItem(lineId?: string, initialName: string = "") {
-    setTargetLineIdForNewItem(lineId ?? null);
-    setAddItemInitialName(initialName);
-    setIsAddItemModalOpen(true);
-  }
-
-  async function handleItemCreated(newProduct: CreatedProductItem) {
-    const formatted: Product = {
-      id: newProduct.id,
-      name: newProduct.name,
-      aliasName: newProduct.aliasName ?? null,
-      manufacturer: newProduct.manufacturer ?? null,
-      hsnCode: newProduct.hsnCode ?? null,
-      unit: newProduct.unit,
-      alternativeUnit: newProduct.alternativeUnit ?? null,
-      stockQuantity: newProduct.stockQuantity ?? 0,
-    };
-    setProducts((prev) => {
-      const exists = prev.some((p) => p.id === formatted.id);
-      if (exists) return prev;
-      return [formatted, ...prev];
-    });
-
-    if (targetLineIdForNewItem) {
-      await handleSelectItem(targetLineIdForNewItem, formatted);
-    }
-  }
 
   const [showNewCustomerInline, setShowNewCustomerInline] = useState(false);
   const [inlineCust, setInlineCust] = useState({
@@ -921,7 +852,7 @@ export default function SalesPage() {
 
     const payload: {
       name: string;
-      partyType: "CUSTOMER";
+      partyType: "BOTH";
       contactPerson?: string;
       phone?: string;
       email?: string;
@@ -930,7 +861,7 @@ export default function SalesPage() {
       paymentTerms?: string;
     } = {
       name: inlineCust.name.trim(),
-      partyType: "CUSTOMER",
+      partyType: "BOTH",
     };
     if (inlineCust.contactPerson.trim()) payload.contactPerson = inlineCust.contactPerson.trim();
     if (inlineCust.phone.trim()) payload.phone = inlineCust.phone.trim();
@@ -2225,7 +2156,7 @@ export default function SalesPage() {
                                   <ItemPicker
                                     products={products}
                                     value={line.productId}
-                                    onStartNewItem={(name) => handleStartNewItem(line.id, name)}
+                                    selectedName={line.productName}
                                     onSelect={(p) => handleSelectItem(line.id, p)}
                                   />
                                 </td>
@@ -2303,18 +2234,9 @@ export default function SalesPage() {
                     </div>
 
                     <div className="border-t border-slate-100 bg-slate-50/50 p-3 px-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={addLine} className="flex items-center gap-2 rounded-lg bg-[#044d73]/10 hover:bg-[#044d73]/20 px-3.5 py-2 text-xs font-semibold text-[#044d73] transition-colors">
-                          <Plus className="w-4 h-4" /> Add Item Line
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleStartNewItem()}
-                          className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-white hover:bg-[#044d73]/5 px-3 py-2 text-xs font-semibold text-[#044d73] transition-colors"
-                        >
-                          <Package className="w-3.5 h-3.5" /> + New Item Catalog
-                        </button>
-                      </div>
+                      <button type="button" onClick={addLine} className="flex items-center gap-2 rounded-lg bg-[#044d73]/10 hover:bg-[#044d73]/20 px-3.5 py-2 text-xs font-semibold text-[#044d73] transition-colors">
+                        <Plus className="w-4 h-4" /> Add Item Line
+                      </button>
                       <span className="text-[11px] text-slate-400 font-medium">
                         {form.items.length} item row{form.items.length !== 1 ? "s" : ""} — add another line to sell the same item from a different batch
                       </span>
@@ -2505,14 +2427,6 @@ export default function SalesPage() {
           onConfirm={handleConfirmPartialPayment}
         />
       )}
-      {/* Add New Item Modal */}
-      <AddItemModal
-        isOpen={isAddItemModalOpen}
-        onClose={() => setIsAddItemModalOpen(false)}
-        initialName={addItemInitialName}
-        onSuccess={handleItemCreated}
-        existingBrands={existingBrands}
-      />
     </div>
   );
 }

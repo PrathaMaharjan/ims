@@ -1,4 +1,5 @@
 import { verifyResetCode, verifyResetCodeSchema } from "@/controller/auth/password-reset";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -7,6 +8,19 @@ export async function POST(req: NextRequest) {
 
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  }
+    const rateLimit = await checkRateLimit({
+    scope: "verify-reset-code",
+    identifier: parsed.data.email,
+    limit: 5,
+    windowSeconds: 15 * 60,
+  });
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    );
   }
 
   try {

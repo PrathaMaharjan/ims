@@ -99,6 +99,20 @@ type SidebarProps = {
 
 /* ----------------------------- pieces ----------------------------- */
 
+/* Splits the brand name at the first space:
+   first word on top (e.g. AJAMBARI), the rest below (e.g. PHARMACY). */
+function BrandName({ brandName }: { brandName: string }) {
+    const [first, ...rest] = (brandName || '').trim().split(/\s+/);
+    const second = rest.join(' ');
+
+    return (
+        <div className="w-full text-center leading-tight">
+            <p className="truncate text-base font-bold text-white">{first}</p>
+            {second && <p className="truncate text-base font-bold text-white">{second}</p>}
+        </div>
+    );
+}
+
 function Brand({
     brandName,
     logoUrl,
@@ -110,27 +124,26 @@ function Brand({
     collapsed: boolean;
     onToggleCollapse: () => void;
 }) {
-    const initial = brandName ? brandName.trim().charAt(0).toUpperCase() : "";
+    const initial = brandName ? brandName.trim().charAt(0).toUpperCase() : '';
 
     return (
-        <div className={`flex items-center pt-6 pb-5 ${collapsed ? 'flex-col gap-2 px-3' : 'gap-3 px-4'}`}>
+        <div className={`relative flex flex-col items-center gap-2 pt-6 pb-5 ${collapsed ? 'px-3' : 'px-4'}`}>
             <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
                 {logoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoUrl} alt={brandName || "Logo"} className="h-full w-full object-cover" />
+                    <img src={logoUrl} alt={brandName || 'Logo'} className="h-full w-full object-cover" />
                 ) : (
-                    <span className="text-lg font-bold text-[#044d73]">
-                        {initial}
-                    </span>
+                    <span className="text-lg font-bold text-[#044d73]">{initial}</span>
                 )}
             </div>
-            {!collapsed && (
-                <span className="flex-1 truncate text-base font-bold text-white">{brandName}</span>
-            )}
+
+            {!collapsed && <BrandName brandName={brandName} />}
+
             <button
                 onClick={onToggleCollapse}
                 aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white ${collapsed ? '' : 'absolute right-3 top-3'
+                    }`}
             >
                 {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
             </button>
@@ -370,10 +383,10 @@ export function Sidebar({ entries = defaultEntries, brandName, logoUrl, user }: 
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
                     {logoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={logoUrl} alt={brandName || "Logo"} className="h-full w-full object-cover" />
+                        <img src={logoUrl} alt={brandName || 'Logo'} className="h-full w-full object-cover" />
                     ) : (
                         <span className="text-xs font-bold text-[#044d73]">
-                            {brandName ? brandName.trim().charAt(0).toUpperCase() : ""}
+                            {brandName ? brandName.trim().charAt(0).toUpperCase() : ''}
                         </span>
                     )}
                 </div>
@@ -392,18 +405,18 @@ export function Sidebar({ entries = defaultEntries, brandName, logoUrl, user }: 
                         >
                             <X size={18} />
                         </button>
-                        <div className="flex items-center gap-3 pt-6 pb-5 px-4">
+                        <div className="flex flex-col items-center gap-2 px-4 pb-5 pt-6">
                             <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
                                 {logoUrl ? (
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={logoUrl} alt={brandName || "Logo"} className="h-full w-full object-cover" />
+                                    <img src={logoUrl} alt={brandName || 'Logo'} className="h-full w-full object-cover" />
                                 ) : (
                                     <span className="text-lg font-bold text-[#044d73]">
-                                        {brandName ? brandName.trim().charAt(0).toUpperCase() : ""}
+                                        {brandName ? brandName.trim().charAt(0).toUpperCase() : ''}
                                     </span>
                                 )}
                             </div>
-                            <span className="truncate text-base font-bold text-white">{brandName}</span>
+                            <BrandName brandName={brandName} />
                         </div>
                         <NavList entries={entries} collapsed={false} onNavigate={() => setMobileOpen(false)} />
                         <UserFooter user={user} collapsed={false} onLogout={handleLogout} />

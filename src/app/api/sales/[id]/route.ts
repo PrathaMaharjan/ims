@@ -21,8 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: and(eq(sales.id, id), eq(sales.organizationId, auth.organizationId)),
       with: {
         items: { with: { batch: true } },
-        party: true,
-        payments: true,
+        customer: true,
       },
     });
 

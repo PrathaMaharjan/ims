@@ -7,6 +7,11 @@ import {
   getInventoryStatus,
 } from "@/controller/dashboard/controller";
 
+// GET /api/dashboard/summary?mode=monthly|yearly&startMonth&endMonth&startYear&endYear
+//
+// Deliberately uncached: `inventoryStatus` depends on CURRENT_DATE and
+// changes on every sale, purchase and return, same reasoning as
+// /api/batches/expiry.
 export async function GET(req: NextRequest) {
   try {
     const auth = await getAuth(req);

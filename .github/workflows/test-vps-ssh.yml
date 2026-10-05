@@ -16,13 +16,13 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_HOST_KEY: ${{ vars.IMS_VPS_HOST_KEY }}
+          VPS_HOST_KEY: ${{ secrets.VPS_HOST_KEY }}
           VPS_PRIVATE_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
           set -euo pipefail
           : "${VPS_HOST:?Set repository secret VPS_HOST}"
           : "${VPS_USER:?Set repository secret VPS_USER}"
-          : "${VPS_HOST_KEY:?Set repository variable IMS_VPS_HOST_KEY}"
+          : "${VPS_HOST_KEY:?Set repository secret VPS_HOST_KEY}"
           : "${VPS_PRIVATE_KEY:?Set repository secret VPS_SSH_KEY}"
           umask 077
           install -d -m 700 "$RUNNER_TEMP/ims-ssh"

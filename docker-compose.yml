@@ -1,13 +1,76 @@
+name: ims-prod
+
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env.production
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "127.0.0.1:${IMS_HOST_PORT:-3400}:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    init: true
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    env_file:
+      - ./.env.postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    env_file:
+      - ./.env.postgres
+    entrypoint: ["sh", "-ec"]
+    command:
+      - |
+        export DATABASE_URL="postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@db:5432/$${POSTGRES_DB}"
+        exec pnpm db:migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - maintenance
+
   redis:
     image: redis:7-alpine
-    container_name: pharma-redis
-    ports:
-      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
 volumes:
   redis-data:
+  db-data:

@@ -1259,6 +1259,8 @@ export default function SalesPage() {
     }
   }
 
+  // for commit 
+
   async function handleConfirmPartialPayment(data: {
     amount: number;
     method: string;

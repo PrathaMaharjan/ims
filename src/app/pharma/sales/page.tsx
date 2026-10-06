@@ -2137,9 +2137,9 @@ export default function SalesPage() {
                             <th className="py-3 px-3 w-10 text-center">#</th>
                             <th className="py-3 px-3 min-w-[220px]">Medicine / Item</th>
                             <th className="py-3 px-3 min-w-[220px]">Batch</th>
-                            <th className="py-3 px-2.5 w-[90px]">Qty</th>
+                            <th className="py-3 px-2.5 min-w-[110px] w-[120px]">Qty</th>
                             <th className="py-3 px-2 w-[70px] text-center">Unit</th>
-                            <th className="py-3 px-2.5 w-[110px]">Sale Rate</th>
+                            <th className="py-3 px-2.5 min-w-[110px] w-[120px]">Sale Rate</th>
                             <th className="py-3 px-2 w-[85px] text-center">VAT</th>
                             <th className="py-3 px-3 w-[110px] text-right">Amount</th>
                             <th className="py-3 px-2 w-[50px] text-center"></th>
@@ -2175,7 +2175,7 @@ export default function SalesPage() {
                                     />
                                   )}
                                 </td>
-                                <td className="order-5 lg:order-0 lg:py-3 lg:px-2.5">
+                                <td className="order-5 lg:order-0 lg:py-3 lg:px-2.5 min-w-[110px]">
                                   <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">Qty</span>
                                   <input
                                     type="number"
@@ -2185,7 +2185,7 @@ export default function SalesPage() {
                                     placeholder="0"
                                     value={line.qty}
                                     onChange={(e) => updateLine(line.id, { qty: e.target.value === "" ? "" : Number(e.target.value) })}
-                                    className={`h-10 w-full rounded-lg border px-2.5 text-base text-slate-700 focus:outline-none focus:ring-1 lg:h-9 lg:text-xs ${exceedsStock ? "border-red-400 bg-red-50/50 focus:border-red-500 focus:ring-red-500" : "border-slate-200 bg-white focus:border-[#044d73] focus:ring-[#044d73]"
+                                    className={`h-10 w-full min-w-[85px] rounded-lg border px-3 text-base text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:outline-none focus:ring-1 lg:h-9 lg:text-xs ${exceedsStock ? "border-red-400 bg-red-50/50 focus:border-red-500 focus:ring-red-500" : "border-slate-200 bg-white focus:border-[#044d73] focus:ring-[#044d73]"
                                       }`}
                                   />
                                   {exceedsStock && (
@@ -2198,7 +2198,7 @@ export default function SalesPage() {
                                   <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">Unit</span>
                                   <span className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-[11px] font-semibold text-slate-600">{line.unit || "—"}</span>
                                 </td>
-                                <td className="order-6 lg:order-0 lg:py-3 lg:px-2.5">
+                                <td className="order-6 lg:order-0 lg:py-3 lg:px-2.5 min-w-[110px]">
                                   <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">Sale Rate</span>
                                   <input
                                     type="number"
@@ -2207,7 +2207,7 @@ export default function SalesPage() {
                                     placeholder="0.00"
                                     value={line.price}
                                     onChange={(e) => updateLine(line.id, { price: e.target.value === "" ? "" : Number(e.target.value) })}
-                                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-base text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73] lg:h-9 lg:text-xs"
+                                    className="h-10 w-full min-w-[85px] rounded-lg border border-slate-200 bg-white px-3 text-base text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73] lg:h-9 lg:text-xs"
                                   />
                                 </td>
                                 <td className="order-8 lg:order-0 lg:py-3 lg:px-2 lg:text-center">

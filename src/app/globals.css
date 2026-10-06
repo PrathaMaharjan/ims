@@ -51,6 +51,16 @@ body {
   animation: dot-bounce 1.2s infinite ease-in-out both;
 }
 
+/* Remove number input spin buttons across the app for cleaner look and more digit space */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 @media print {
   @page {
     size: auto;

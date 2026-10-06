@@ -46,8 +46,10 @@ on_unhealthy() {
 main() {
   cd "$APP_DIR"
 
-  # Stop a manual run and a CI run from deploying at the same time.
-  exec 9>/tmp/ims-deploy.lock
+  # Stop a manual run and a CI run from deploying at the same time. Locking the
+  # app directory itself (opened read-only) works for any user that can deploy,
+  # unlike a lock file in /tmp, which belongs to whichever user created it first.
+  exec 9<"$APP_DIR"
   flock -n 9 || { echo "Another deploy is already running." >&2; exit 1; }
 
   if [[ -n $(git status --porcelain --untracked-files=no) ]]; then

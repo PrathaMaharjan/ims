@@ -416,6 +416,7 @@ export default function PartyLedgerPage({
           </div>
 
           {/* Ledger Table */}
+          {/* {lala} */}
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
@@ -504,7 +505,6 @@ export default function PartyLedgerPage({
                 )}
               </tbody>
 
-              {/* Bottom Summary Table matching the exact photo */}
               <tfoot className="border-t-2 border-slate-300 font-mono text-xs">
                 {/* Total Row */}
                 <tr className="border-b border-slate-200 font-bold bg-slate-50/50">

@@ -1,7 +1,4 @@
-/**
- * Converts numbers to words in Indian/Nepali numbering format (Lakhs and Crores).
- * Example: 233910 -> "Two Lakh Thirty Three Thousand Nine Hundred Ten Rupees Only"
- */
+
 
 const ONES = [
   "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",

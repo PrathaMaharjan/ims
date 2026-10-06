@@ -274,10 +274,11 @@ const SEARCH_DEBOUNCE_MS = 400;
 const STATS_FETCH_LIMIT = 100;
 
 function formatCurrency(amount: number) {
-  return `Rs ${new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 2,
+  return new Intl.NumberFormat("en-NP", {
+    style: "currency",
+    currency: "NPR",
     maximumFractionDigits: 2,
-  }).format(amount)}`;
+  }).format(amount);
 }
 
 function formatDate(iso: string) {
@@ -1201,14 +1202,12 @@ export default function ExpensesPage() {
                   onCreate={addCategory}
                   onDelete={deleteCategory}
                 />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Pick existing, click + to add new, or use list button to manage/delete
-                </p>
+            
               </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-500 sm:text-sm sm:mb-2">
-                 Amount (Rs)
+                  Amount (NPR)
                 </label>
                 <input
                   type="number"

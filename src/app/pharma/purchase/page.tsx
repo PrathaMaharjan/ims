@@ -2412,8 +2412,8 @@ export default function PurchasePage() {
                 <Section title="Items & Batch Details" icon={<PackagePlus className="w-3.5 h-3.5" />}>
                   <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
+                      <table className="block w-full text-xs lg:table">
+                        <thead className="hidden lg:table-header-group">
                           <tr className="bg-slate-50/90 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                             <th className="py-3 px-3 w-10 text-center">#</th>
                             <th className="py-3 px-3 min-w-[240px]">Item Name</th>
@@ -2426,7 +2426,7 @@ export default function PurchasePage() {
                             <th className="py-3 px-2 w-[50px] text-center"></th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="block divide-y divide-slate-100 lg:table-row-group">
                           {form.items.map((line, idx) => {
                             const isExpanded = expandedLineIds.includes(line.id);
                             const hasValidBatch = line.batch && line.batch.batchNo.trim() !== "" && line.batch.expDate.trim() !== "";
@@ -2434,9 +2434,10 @@ export default function PurchasePage() {
 
                             return (
                               <Fragment key={line.id}>
-                                <tr className={`transition-colors ${isMissingBatch ? "bg-amber-50/30" : "hover:bg-slate-50/50"} ${isExpanded ? "bg-slate-50/70" : ""}`}>
-                                  <td className="py-3 px-3 text-center font-medium text-slate-400">{idx + 1}</td>
-                                  <td className="py-3 px-3">
+                                <tr className={`grid grid-cols-2 gap-x-2.5 gap-y-2 p-2.5 transition-colors sm:grid-cols-4 lg:table-row lg:p-0 ${isMissingBatch ? "bg-amber-50/30" : "hover:bg-slate-50/50"} ${isExpanded ? "bg-slate-50/70" : ""}`}>
+                                  <td className="order-1 self-center text-left sm:col-span-2 font-medium text-slate-400 lg:order-0 lg:py-3 lg:px-3 lg:text-center">{idx + 1}</td>
+                                  <td className="order-3 col-span-2 sm:col-span-4 lg:order-0 lg:col-span-1 lg:py-3 lg:px-3">
+                                    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">Item Name</span>
                                     <ItemPicker
                                       value={line.itemId}
                                       selectedName={line.itemName}
@@ -2457,28 +2458,32 @@ export default function PurchasePage() {
                                       }}
                                     />
                                   </td>
-                                  <td className="py-3 px-2.5">
+                                  <td className="order-4 lg:order-0 lg:py-3 lg:px-2.5">
+                                    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">Qty</span>
                                     <input
                                       type="number" min={0} step="1" placeholder="0"
                                       value={line.qty}
                                       onChange={e => updateLine(line.id, { qty: e.target.value === "" ? "" : Number(e.target.value) })}
-                                      className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-base text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73] lg:h-9 lg:text-xs"
                                     />
                                   </td>
-                                  <td className="py-3 px-2 text-center">
+                                  <td className="order-6 lg:order-0 lg:py-3 lg:px-2 lg:text-center">
+                                    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">Unit</span>
                                     <span className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-[11px] font-semibold text-slate-600">
                                       {line.unit || "—"}
                                     </span>
                                   </td>
-                                  <td className="py-3 px-2.5">
+                                  <td className="order-5 lg:order-0 lg:py-3 lg:px-2.5">
+                                    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">Pur. Rate</span>
                                     <input
                                       type="number" min={0} step="0.01" placeholder="0.00"
                                       value={line.price}
                                       onChange={e => updateLine(line.id, { price: e.target.value === "" ? "" : Number(e.target.value) })}
-                                      className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73]"
+                                      className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-base text-slate-700 focus:border-[#044d73] focus:outline-none focus:ring-1 focus:ring-[#044d73] lg:h-9 lg:text-xs"
                                     />
                                   </td>
-                                  <td className="py-3 px-2 text-center">
+                                  <td className="order-7 lg:order-0 lg:py-3 lg:px-2 lg:text-center">
+                                    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">VAT</span>
                                     <label className="inline-flex items-center gap-1.5 cursor-pointer select-none py-1.5 px-2 rounded-lg hover:bg-slate-100/80 transition-colors">
                                       <input
                                         type="checkbox"
@@ -2491,10 +2496,12 @@ export default function PurchasePage() {
                                       </span>
                                     </label>
                                   </td>
-                                  <td className="py-3 px-3 text-right font-bold text-slate-800">
-                                    <div className="flex h-9 items-center justify-end">{rs(lineAmount(line))}</div>
+                                  <td className="order-8 col-span-2 sm:col-span-1 font-bold text-slate-800 lg:order-0 lg:table-cell lg:col-span-1 lg:py-3 lg:px-3 lg:text-right">
+                                    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">Amount</span>
+                                    <div className="flex h-9 items-center justify-start lg:justify-end">{rs(lineAmount(line))}</div>
                                   </td>
-                                  <td className="py-3 px-3">
+                                  <td className="order-9 col-span-2 sm:col-span-3 lg:order-0 lg:col-span-1 lg:py-3 lg:px-3">
+                                    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">Batch Details</span>
                                     {hasValidBatch ? (
                                       <button
                                         type="button"
@@ -2520,7 +2527,7 @@ export default function PurchasePage() {
                                       </button>
                                     )}
                                   </td>
-                                  <td className="py-3 px-2 text-center">
+                                  <td className="order-2 self-center text-right sm:col-span-2 lg:order-0 lg:py-3 lg:px-2 lg:text-center">
                                     <button
                                       type="button"
                                       onClick={() => removeLine(line.id)}
@@ -2534,8 +2541,8 @@ export default function PurchasePage() {
                                 </tr>
 
                                 {isExpanded && (
-                                  <tr className="bg-slate-50/80 border-b border-slate-200 animate-in fade-in duration-150">
-                                    <td colSpan={8} className="p-3.5 pl-10 pr-6">
+                                  <tr className="block bg-slate-50/80 border-b border-slate-200 animate-in fade-in duration-150 lg:table-row">
+                                    <td colSpan={8} className="block p-3 lg:table-cell lg:p-3.5 lg:pl-10 lg:pr-6">
                                       <div className="rounded-xl border border-[#044d73]/25 bg-white p-4 shadow-sm space-y-3.5">
                                         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                                           <div className="flex items-center gap-2">
@@ -2549,7 +2556,7 @@ export default function PurchasePage() {
                                           </button>
                                         </div>
 
-                                        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 items-end p-3 rounded-lg bg-slate-50/80 border border-slate-200/80">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 items-end p-3 rounded-lg bg-slate-50/80 border border-slate-200/80">
                                           <div>
                                             <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Batch No. *</label>
                                             <input type="text" required placeholder="e.g. AB2501"

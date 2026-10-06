@@ -72,3 +72,6 @@ input[type="number"] {
   }
 }
 
+.animate-dot-bounce {
+  animation: dot-bounce 1.2s infinite ease-in-out both;
+}

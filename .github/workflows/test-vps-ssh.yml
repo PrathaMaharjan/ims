@@ -1,0 +1,42 @@
+name: Test VPS SSH
+
+on:
+  push:
+    branches: [deploy/ims]
+
+permissions: {}
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Verify GitHub Actions can log in to the VPS
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST_KEY: ${{ secrets.VPS_HOST_KEY }}
+          VPS_PRIVATE_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          : "${VPS_HOST:?Set repository secret VPS_HOST}"
+          : "${VPS_USER:?Set repository secret VPS_USER}"
+          : "${VPS_HOST_KEY:?Set repository secret VPS_HOST_KEY}"
+          : "${VPS_PRIVATE_KEY:?Set repository secret VPS_SSH_KEY}"
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/ims-ssh"
+          trap 'rm -f "$RUNNER_TEMP/ims-ssh/key"' EXIT
+          printf '%s\n' "$VPS_PRIVATE_KEY" > "$RUNNER_TEMP/ims-ssh/key"
+          printf '%s\n' "$VPS_HOST_KEY" > "$RUNNER_TEMP/ims-ssh/known_hosts"
+          ssh -T \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$RUNNER_TEMP/ims-ssh/known_hosts" \
+            -o ConnectTimeout=10 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=2 \
+            -i "$RUNNER_TEMP/ims-ssh/key" \
+            "$VPS_USER@$VPS_HOST" 'id -un && hostname'

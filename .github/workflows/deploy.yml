@@ -1,17 +1,26 @@
-name: Test VPS SSH
+name: Deploy to VPS
 
 on:
   push:
     branches: [deploy/ims]
+  workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: read
+
+# Queue deploys one after another; never cancel one halfway through a build.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
 
 jobs:
-  test-connection:
+  deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 20
     steps:
-      - name: Verify GitHub Actions can log in to the VPS
+      - uses: actions/checkout@v5
+
+      - name: Run scripts/deploy.sh on the VPS
         shell: bash
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -37,6 +46,6 @@ jobs:
             -o UserKnownHostsFile="$RUNNER_TEMP/ims-ssh/known_hosts" \
             -o ConnectTimeout=10 \
             -o ServerAliveInterval=15 \
-            -o ServerAliveCountMax=2 \
+            -o ServerAliveCountMax=8 \
             -i "$RUNNER_TEMP/ims-ssh/key" \
-            "$VPS_USER@$VPS_HOST" 'id -un && hostname'
+            "$VPS_USER@$VPS_HOST" 'bash -s' < scripts/deploy.sh

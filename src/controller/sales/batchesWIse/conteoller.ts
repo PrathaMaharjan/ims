@@ -201,15 +201,23 @@ export async function createSale(
     // 4. Insert one sale_item row per line — direct 1:1 with the batch the
     // staff selected, no splitting across multiple batches.
     await db.insert(saleItems).values(
-      input.items.map((item, i) => ({
-        saleId: sale.id,
-        productId: item.productId,
-        batchId: item.batchId,
-        quantity: item.quantity,
-        salePrice: item.salePrice.toFixed(2),
-        vatAmount: "0", // total VAT lives on the sale header, not split per line
-        lineTotal: totals.lineTotals[i].toFixed(2),
-      }))
+      input.items.map((item, i) => {
+        const lineTotal = totals.lineTotals[i];
+        const isVat = item.vatApplicable !== false;
+        const lineVat = isVat
+          ? ((lineTotal * (input.vatRate ?? 13)) / 100).toFixed(2)
+          : "0";
+        return {
+          saleId: sale.id,
+          productId: item.productId,
+          batchId: item.batchId,
+          quantity: item.quantity,
+          salePrice: item.salePrice.toFixed(2),
+          vatAmount: lineVat,
+          vatApplicable: isVat,
+          lineTotal: lineTotal.toFixed(2),
+        };
+      })
     );
  
     // 5. Decrement quantityAvailable per batch. The guard on the UPDATE is a
@@ -354,15 +362,23 @@ export async function updateSale(
     // 3. Replace sale_items entirely with the new line set.
     await db.delete(saleItems).where(eq(saleItems.saleId, saleId));
     await db.insert(saleItems).values(
-      input.items.map((item, i) => ({
-        saleId,
-        productId: item.productId,
-        batchId: item.batchId,
-        quantity: item.quantity,
-        salePrice: item.salePrice.toFixed(2),
-        vatAmount: "0",
-        lineTotal: totals.lineTotals[i].toFixed(2),
-      }))
+      input.items.map((item, i) => {
+        const lineTotal = totals.lineTotals[i];
+        const isVat = item.vatApplicable !== false;
+        const lineVat = isVat
+          ? ((lineTotal * (input.vatRate ?? 13)) / 100).toFixed(2)
+          : "0";
+        return {
+          saleId,
+          productId: item.productId,
+          batchId: item.batchId,
+          quantity: item.quantity,
+          salePrice: item.salePrice.toFixed(2),
+          vatAmount: lineVat,
+          vatApplicable: isVat,
+          lineTotal: lineTotal.toFixed(2),
+        };
+      })
     );
 
     // 4. Deduct the NEW quantities from whichever batches are now selected.

@@ -1156,7 +1156,7 @@ export default function PurchasePage() {
           itemName: product?.name ?? "",
           unit: product?.unit ?? "",
           altUnit: product?.alternativeUnit ?? "",
-          vatApplicable: it.vatApplicable,
+          vatApplicable: record.purcType === "VAT_TAX_INCL" ? true : it.vatApplicable,
           qty: it.quantity,
           price: Number(it.purchaseRate),
           batch: {
@@ -1214,7 +1214,11 @@ export default function PurchasePage() {
       ...p,
       items: p.items.map(li => {
         if (li.id !== id) return li;
-        const updated = { ...li, ...patch };
+        const updated = {
+          ...li,
+          ...patch,
+          ...(p.purcType === "VAT_TAX_INCL" ? { vatApplicable: true } : {}),
+        };
         if (patch.qty !== undefined && updated.batch) {
           updated.batch = { ...updated.batch, qty: patch.qty };
         }
@@ -1327,7 +1331,7 @@ export default function PurchasePage() {
         ...(li.purchaseItemId ? { purchaseItemId: li.purchaseItemId } : {}),
         productId: li.itemId,
         purchaseRate: n(li.price),
-        vatApplicable: li.vatApplicable,
+        vatApplicable: form.purcType === "VAT_TAX_INCL" ? true : li.vatApplicable,
         batch: {
           batchNumber: li.batch!.batchNo.trim(),
           quantity: n(li.qty),
@@ -2188,7 +2192,16 @@ export default function PurchasePage() {
                     <Field label="Purc Type" hint="VAT treatment for this purchase">
                       <select
                         value={form.purcType}
-                        onChange={e => setForm(p => ({ ...p, purcType: e.target.value as PurcType }))}
+                        onChange={e => {
+                          const nextType = e.target.value as PurcType;
+                          setForm(p => ({
+                            ...p,
+                            purcType: nextType,
+                            items: nextType === "VAT_TAX_INCL"
+                              ? p.items.map(it => ({ ...it, vatApplicable: true }))
+                              : p.items,
+                          }));
+                        }}
                         className={inputCls}
                       >
                         <option value="VAT_EXEMPT">VAT/Exempt</option>
@@ -2485,15 +2498,30 @@ export default function PurchasePage() {
                                   </td>
                                   <td className="order-7 lg:order-0 lg:py-3 lg:px-2 lg:text-center">
                                     <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">VAT</span>
-                                    <label className="inline-flex items-center gap-1.5 cursor-pointer select-none py-1.5 px-2 rounded-lg hover:bg-slate-100/80 transition-colors">
+                                    <label
+                                      className={`inline-flex items-center gap-1.5 select-none py-1.5 px-2 rounded-lg transition-colors ${
+                                        form.purcType === "VAT_TAX_INCL"
+                                          ? "cursor-not-allowed opacity-90"
+                                          : "cursor-pointer hover:bg-slate-100/80"
+                                      }`}
+                                      title={form.purcType === "VAT_TAX_INCL" ? "VAT is permanently enabled for Tax Inclusive purchases" : undefined}
+                                    >
                                       <input
                                         type="checkbox"
-                                        checked={line.vatApplicable}
-                                        onChange={e => updateLine(line.id, { vatApplicable: e.target.checked })}
-                                        className="h-4 w-4 rounded border-slate-300 text-[#044d73] focus:ring-[#044d73] cursor-pointer"
+                                        checked={form.purcType === "VAT_TAX_INCL" ? true : line.vatApplicable}
+                                        disabled={form.purcType === "VAT_TAX_INCL"}
+                                        onChange={e => {
+                                          if (form.purcType === "VAT_TAX_INCL") return;
+                                          updateLine(line.id, { vatApplicable: e.target.checked });
+                                        }}
+                                        className={`h-4 w-4 rounded border-slate-300 text-[#044d73] focus:ring-[#044d73] ${
+                                          form.purcType === "VAT_TAX_INCL" ? "cursor-not-allowed text-[#044d73]" : "cursor-pointer"
+                                        }`}
                                       />
-                                      <span className={`text-[11px] font-bold ${line.vatApplicable ? "text-emerald-600" : "text-slate-400"}`}>
-                                        {line.vatApplicable ? "13%" : "0%"}
+                                      <span className={`text-[11px] font-bold ${
+                                        (form.purcType === "VAT_TAX_INCL" || line.vatApplicable) ? "text-emerald-600" : "text-slate-400"
+                                      }`}>
+                                        {(form.purcType === "VAT_TAX_INCL" || line.vatApplicable) ? `${form.vatRate || 13}%` : "0%"}
                                       </span>
                                     </label>
                                   </td>

@@ -6,6 +6,7 @@ import {
   timestamp,
   uniqueIndex,
   text,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { organizations } from "./organizations";
@@ -84,6 +85,7 @@ export const saleItems = pgTable("sale_items", {
   vatAmount: numeric("vat_amount", { precision: 12, scale: 2 })
     .notNull()
     .default("0"),
+  vatApplicable: boolean("vat_applicable").notNull().default(true),
   lineTotal: numeric("line_total", { precision: 12, scale: 2 }).notNull(),
 });
 

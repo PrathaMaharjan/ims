@@ -174,6 +174,8 @@ interface SaleRecord {
     batchId: string;
     quantity: number;
     salePrice: string;
+    vatAmount?: string;
+    vatApplicable?: boolean;
     lineTotal: string;
     batch?: { batchNumber: string; expiryDate: string } | null;
   }>;
@@ -408,12 +410,12 @@ function CustomerCombobox({
 
   const filtered = query.trim()
     ? activeCustomers.filter(
-        (c) =>
-          c.name.toLowerCase().includes(query.toLowerCase()) ||
-          (c.phone ?? "").includes(query) ||
-          (c.panVatNumber ?? "").includes(query) ||
-          (c.contactPerson ?? "").toLowerCase().includes(query.toLowerCase())
-      )
+      (c) =>
+        c.name.toLowerCase().includes(query.toLowerCase()) ||
+        (c.phone ?? "").includes(query) ||
+        (c.panVatNumber ?? "").includes(query) ||
+        (c.contactPerson ?? "").toLowerCase().includes(query.toLowerCase())
+    )
     : activeCustomers;
 
   const exactMatch = activeCustomers.some((c) => c.name.toLowerCase() === query.trim().toLowerCase());
@@ -979,6 +981,18 @@ export default function SalesPage() {
     setEditingSaleId(record.id);
     setSaveError(null);
 
+    // Track quantities originally held by this sale for each batch so that
+    // batch stock in the edit form includes the quantities currently held by this sale.
+    const originalQtyByBatch = new Map<string, number>();
+    for (const it of record.items) {
+      if (it.batchId) {
+        originalQtyByBatch.set(
+          it.batchId,
+          (originalQtyByBatch.get(it.batchId) ?? 0) + it.quantity
+        );
+      }
+    }
+
     // Fetch batches for every distinct product on this sale so the pickers
     // are populated immediately, in parallel rather than one by one.
     const productIds = [...new Set(record.items.map((it) => it.productId))];
@@ -986,8 +1000,13 @@ export default function SalesPage() {
     await Promise.all(
       productIds.map(async (productId) => {
         try {
-          const res = await api.get(`/api/product/${productId}/batches`);
-          batchesByProduct.set(productId, res.data.batches);
+          const res = await api.get(`/api/batches/${productId}`);
+          const rawBatches: ApiBatch[] = res.data.batches || [];
+          const adjusted = rawBatches.map((b) => ({
+            ...b,
+            quantityAvailable: b.quantityAvailable + (originalQtyByBatch.get(b.id) ?? 0),
+          }));
+          batchesByProduct.set(productId, adjusted);
         } catch {
           batchesByProduct.set(productId, []);
         }
@@ -1021,22 +1040,47 @@ export default function SalesPage() {
       ],
       items: record.items.map((it) => {
         const product = products.find((p) => p.id === it.productId);
-        const batches = batchesByProduct.get(it.productId) ?? [];
-        const currentBatch = batches.find((b) => b.id === it.batchId) ?? it.batch;
+        let batches = batchesByProduct.get(it.productId) ?? [];
+        let currentBatch = batches.find((b) => b.id === it.batchId);
+
+        // Fallback: If the batch in the record is not in the list, ensure it's selectable
+        if (!currentBatch && it.batchId) {
+          const fallbackBatch: ApiBatch = {
+            id: it.batchId,
+            batchNumber: it.batch?.batchNumber ?? it.batchId,
+            expiryDate: it.batch?.expiryDate ?? "",
+            quantityAvailable: it.quantity,
+            salePrice: String(it.salePrice),
+            mrp: String(it.salePrice),
+          };
+          batches = [fallbackBatch, ...batches];
+          batchesByProduct.set(it.productId, batches);
+          currentBatch = fallbackBatch;
+        }
+
+        const isSaleVatZero = Number(record.vatAmount || 0) === 0;
+        const isItemVat = isSaleVatZero
+          ? false
+          : (it.vatApplicable !== undefined
+            ? it.vatApplicable
+            : Number(it.vatAmount || 0) > 0);
+
+        const availableStock = currentBatch?.quantityAvailable ?? it.quantity;
+
         return {
           id: crypto.randomUUID(),
           productId: it.productId,
           productName: product?.name ?? "",
           unit: product?.unit ?? "",
           batchId: it.batchId,
-          batchNo: currentBatch?.batchNumber ?? "",
-          batchExpDate: currentBatch?.expiryDate ?? "",
-          batchStock: batches.find((b) => b.id === it.batchId)?.quantityAvailable ?? it.quantity,
+          batchNo: currentBatch?.batchNumber ?? it.batch?.batchNumber ?? "",
+          batchExpDate: currentBatch?.expiryDate ?? it.batch?.expiryDate ?? "",
+          batchStock: availableStock,
           availableBatches: batches,
           loadingBatches: false,
           qty: it.quantity,
           price: Number(it.salePrice),
-          vatApplicable: true,
+          vatApplicable: isItemVat,
         };
       }),
     });
@@ -1364,7 +1408,7 @@ export default function SalesPage() {
       <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sales</h1>
-          <p className="text-xs text-white/70 mt-0.5">Sales invoices, cash & credit billing with batch inventory tracking</p>
+
         </div>
         <button
           onClick={openAdd}

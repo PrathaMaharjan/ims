@@ -8,6 +8,13 @@
       "when": 1791113543521,
       "tag": "0000_familiar_wallow",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791359196217,
+      "tag": "0001_sale_items_vat_applicable",
+      "breakpoints": true
     }
   ]
 }

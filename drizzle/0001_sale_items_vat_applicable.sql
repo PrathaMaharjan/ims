@@ -1,0 +1,1 @@
+ALTER TABLE "sale_items" ADD COLUMN "vat_applicable" boolean DEFAULT true NOT NULL;

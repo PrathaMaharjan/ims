@@ -32,7 +32,11 @@ export async function GET(req: NextRequest) {
       db.query.purchases.findMany({
         where: whereClause,
         with: {
-          items: true,
+          items: {
+            with: {
+              batch: { columns: { quantityReceived: true, quantityAvailable: true } },
+            },
+          },
           party: { columns: { id: true, name: true } }, // added — no separate fetch needed
           payments: true,
         },

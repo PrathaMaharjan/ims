@@ -128,6 +128,7 @@ interface LineItemForm {
   price: Num;
   vatApplicable: boolean;
   batch: BatchDetails | null;
+  soldQty?: number; // units already sold/moved from this line's saved batch
 }
 
 export type AdjustmentCategory =
@@ -189,7 +190,12 @@ interface PurchaseRecord {
     mrp: string;
     vatApplicable: boolean;
     lineTotal: string;
-    batch?: { salePrice: string | null; note: string | null } | null;
+    batch?: {
+      salePrice: string | null;
+      note: string | null;
+      quantityReceived?: number;
+      quantityAvailable?: number;
+    } | null;
   }>;
   payments?: Array<{
     id: string;
@@ -705,6 +711,7 @@ export default function PurchasePage() {
   const [form, setForm] = useState<PurchaseForm>(() => emptyForm());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [lineError, setLineError] = useState<string | null>(null);
 
   const [expandedLineIds, setExpandedLineIds] = useState<string[]>([]);
 
@@ -1136,6 +1143,7 @@ export default function PurchasePage() {
   async function openEdit(record: PurchaseRecord) {
     setEditingPurchaseId(record.id);
     setSaveError(null);
+    setLineError(null);
 
     setForm({
       date: record.purchaseDate,
@@ -1152,6 +1160,9 @@ export default function PurchasePage() {
         return {
           id: crypto.randomUUID(),
           purchaseItemId: it.id,
+          soldQty: it.batch
+            ? Math.max(0, (it.batch.quantityReceived ?? 0) - (it.batch.quantityAvailable ?? 0))
+            : 0,
           itemId: it.productId,
           itemName: product?.name ?? "",
           unit: product?.unit ?? "",
@@ -1200,6 +1211,7 @@ export default function PurchasePage() {
     setEditingPurchaseId(null);
     setExpandedLineIds([]);
     setSaveError(null);
+    setLineError(null);
     setShowNewPartyInline(false);
     setInlineParty({ name: "", contactPerson: "", phone: "", email: "", panVatNumber: "", paymentTerms: "", address: "" });
     setInlinePartyError(null);
@@ -1245,6 +1257,14 @@ export default function PurchasePage() {
   }
 
   function removeLine(id: string) {
+    const target = form.items.find(li => li.id === id);
+    if (target?.soldQty && target.soldQty > 0) {
+      setLineError(
+        `Cannot remove "${target.itemName || "this item"}" — ${target.soldQty} unit(s) from its batch have already been sold or moved.`,
+      );
+      return;
+    }
+    setLineError(null);
     setForm(p => ({ ...p, items: p.items.length > 1 ? p.items.filter(li => li.id !== id) : p.items }));
     setExpandedLineIds(prev => prev.filter(x => x !== id));
   }
@@ -2424,6 +2444,11 @@ export default function PurchasePage() {
                 </Section>
 
                 <Section title="Items & Batch Details" icon={<PackagePlus className="w-3.5 h-3.5" />}>
+                  {lineError && (
+                    <p className="mb-2 text-xs text-red-600 font-medium">
+                      {lineError}
+                    </p>
+                  )}
                   <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="block w-full text-xs lg:table">

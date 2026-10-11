@@ -425,22 +425,35 @@ export async function deletePurchase(
     );
   }
 
-  await Promise.all(
-    Array.from(quantityByProduct.entries()).map(([productId, qty]) =>
-      db
-        .update(products)
-        .set({
-          stockQuantity: sql`${products.stockQuantity} - ${qty}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(products.id, productId)),
-    ),
-  );
-  if (batchIds.length > 0) {
-    await db.delete(batches).where(inArray(batches.id, batchIds));
-  }
+  await db.transaction(async (tx) => {
+    await Promise.all(
+      Array.from(quantityByProduct.entries()).map(([productId, qty]) =>
+        tx
+          .update(products)
+          .set({
+            stockQuantity: sql`${products.stockQuantity} - ${qty}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(products.id, productId)),
+      ),
+    );
+    if (batchIds.length > 0) {
+      await tx.delete(batches).where(inArray(batches.id, batchIds));
+    }
 
-  await db.delete(purchases).where(eq(purchases.id, purchaseId));
+    // payments.purchase_id is "set null" on delete, so without this the
+    // payments would survive as orphans and still show in the party ledger.
+    await tx
+      .delete(payments)
+      .where(
+        and(
+          eq(payments.organizationId, organizationId),
+          eq(payments.purchaseId, purchaseId),
+        ),
+      );
+
+    await tx.delete(purchases).where(eq(purchases.id, purchaseId));
+  });
 
   await Promise.all([
     invalidateCache(`products:list:${organizationId}`),

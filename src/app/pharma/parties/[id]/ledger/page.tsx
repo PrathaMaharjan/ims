@@ -227,7 +227,6 @@ export default function PartyLedgerPage({
 
   const isPartialSelection = selectedEntryIds.size > 0 && selectedEntryIds.size < (ledger?.entries.length || 0);
 
-  // Period shown in the sheet title: the chosen filter, else first/last entry dates.
   const periodFrom =
     ledger?.dateRange.startBsDate ?? ledger?.entries[0]?.nepaliDate ?? null;
   const periodTo =
@@ -280,7 +279,7 @@ export default function PartyLedgerPage({
         </div>
       </div>
 
-      {/* Stat Dashboards (Hidden when Printing) */}
+     
       {ledger && (
         <div className="print:hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="rounded-xl border border-slate-200 border-l-4 border-l-slate-400 bg-white p-4 sm:p-5 shadow-sm flex items-center justify-between">
@@ -361,7 +360,7 @@ export default function PartyLedgerPage({
         </div>
       )}
 
-      {/* Control Actions & Filter Panel (Hidden when Printing) */}
+  
       <div className="print:hidden flex flex-col gap-3.5 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           {/* Party Selector */}
@@ -775,3 +774,5 @@ export default function PartyLedgerPage({
     </div>
   );
 }
+
+{/* <div></div> */}

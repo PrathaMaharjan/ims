@@ -14,8 +14,19 @@ import {
 import { formatBsDate, getFiscalYear } from "@/lib/nepali-date";
 import { and, eq, inArray, or } from "drizzle-orm";
 
+// Which real record a ledger row points at (used by the entry pop-up).
+// Auto-generated "settlement" rows point at their parent invoice.
+export type LedgerRefType =
+  | "purchase"
+  | "sale"
+  | "payment"
+  | "purchaseReturn"
+  | "saleReturn";
+
 export interface LedgerEntry {
   id: string;
+  refType: LedgerRefType;
+  refId: string;
   nepaliDate: string;
   englishDate: string;
   rawDate: string;
@@ -68,6 +79,8 @@ export interface PartyLedgerResult {
 
 interface RawTransaction {
   id: string;
+  refType: LedgerRefType;
+  refId: string;
   rawDate: string; // YYYY-MM-DD
   createdAt: Date;
   type: "Sale" | "Purc" | "SlRt" | "PurRt" | "Jrnl" | "Rcpt" | "Pymt";
@@ -77,7 +90,7 @@ interface RawTransaction {
   credit: number;
 }
 
-function toStandardISODate(val: unknown): string {
+export function toStandardISODate(val: unknown): string {
   if (!val) return "";
   if (val instanceof Date) {
     const y = val.getFullYear();
@@ -263,6 +276,8 @@ export async function getPartyLedger(
     // Debit customer account for the sale invoice
     rawList.push({
       id: s.id,
+      refType: "sale",
+      refId: s.id,
       rawDate: rawDateStr,
       createdAt: created,
       type: "Sale",
@@ -283,6 +298,8 @@ export async function getPartyLedger(
       const methodLabel = s.paymentType ? s.paymentType.replace("_", " ") : "CASH";
       rawList.push({
         id: `rcpt-${s.id}`,
+        refType: "sale",
+        refId: s.id,
         rawDate: rawDateStr,
         createdAt: new Date(created.getTime() + 100),
         type: "Rcpt",
@@ -303,6 +320,8 @@ export async function getPartyLedger(
     // Credit supplier account for the purchase bill
     rawList.push({
       id: p.id,
+      refType: "purchase",
+      refId: p.id,
       rawDate: rawDateStr,
       createdAt: created,
       type: "Purc",
@@ -323,6 +342,8 @@ export async function getPartyLedger(
       const methodLabel = p.paymentType ? p.paymentType.replace("_", " ") : "CASH";
       rawList.push({
         id: `pmt-${p.id}`,
+        refType: "purchase",
+        refId: p.id,
         rawDate: rawDateStr,
         createdAt: new Date(created.getTime() + 100),
         type: "Pymt",
@@ -346,6 +367,8 @@ export async function getPartyLedger(
       // Money received from customer (credits customer's receivable balance)
       rawList.push({
         id: pay.id,
+        refType: "payment",
+        refId: pay.id,
         rawDate: rawDateStr,
         createdAt: created,
         type: "Rcpt",
@@ -358,6 +381,8 @@ export async function getPartyLedger(
       // Money paid to supplier (debits supplier's payable balance)
       rawList.push({
         id: pay.id,
+        refType: "payment",
+        refId: pay.id,
         rawDate: rawDateStr,
         createdAt: created,
         type: "Pymt",
@@ -388,6 +413,8 @@ export async function getPartyLedger(
 
     rawList.push({
       id: ret.id,
+      refType: "purchaseReturn",
+      refId: ret.id,
       rawDate: rawDateStr,
       createdAt: created,
       type: "PurRt",
@@ -415,6 +442,8 @@ export async function getPartyLedger(
 
     rawList.push({
       id: sr.id,
+      refType: "saleReturn",
+      refId: sr.id,
       rawDate: rawDateStr,
       createdAt: created,
       type: "SlRt",
@@ -478,6 +507,8 @@ export async function getPartyLedger(
 
     return {
       id: item.id,
+      refType: item.refType,
+      refId: item.refId,
       nepaliDate: nepaliDateStr,
       englishDate: engFormatted,
       rawDate: item.rawDate,

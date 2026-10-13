@@ -17,7 +17,8 @@ import {
   Filter,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
-import { PartyLedgerResult } from "@/controller/party/ledger";
+import { PartyLedgerResult, LedgerEntry } from "@/controller/party/ledger";
+import { LedgerEntryModal } from "./_components/LedgerEntryModal";
 import { formatBsDate, getFiscalYear } from "@/lib/nepali-date";
 import { AnimatedStatValue } from "@/app/pharma/_components/ui/animated-stat-value";
 import { DotsLoader } from "@/app/pharma/_components/ui/dots-loader";
@@ -48,6 +49,10 @@ export default function PartyLedgerPage({
 
   // Printable area row selection state
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
+
+  // Row clicked to view its details in the pop-up
+  const [viewEntry, setViewEntry] = useState<LedgerEntry | null>(null);
+  const closeEntry = useCallback(() => setViewEntry(null), []);
 
   // Fetch all parties for the party switcher dropdown
   useEffect(() => {
@@ -221,6 +226,14 @@ export default function PartyLedgerPage({
     })}`;
 
   const isPartialSelection = selectedEntryIds.size > 0 && selectedEntryIds.size < (ledger?.entries.length || 0);
+
+  // Period shown in the sheet title: the chosen filter, else first/last entry dates.
+  const periodFrom =
+    ledger?.dateRange.startBsDate ?? ledger?.entries[0]?.nepaliDate ?? null;
+  const periodTo =
+    ledger?.dateRange.endBsDate ??
+    ledger?.entries[ledger.entries.length - 1]?.nepaliDate ??
+    null;
 
   return (
     <div className="flex flex-col gap-6 md:gap-8 pb-16">
@@ -481,52 +494,69 @@ export default function PartyLedgerPage({
         </div>
       ) : ledger ? (
         /* The Printable Sheet Layout matching user's photo */
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-10 font-sans print:border-none print:shadow-none print:p-0 print:m-0 text-slate-900">
-          {/* Statement Header */}
-          <div className="text-center space-y-1 border-b border-slate-200 pb-4 mb-5">
-            <h2 className="text-lg sm:text-xl font-bold uppercase tracking-wider text-slate-900">
-              {ledger.organization.businessName} {ledger.organization.fiscalYear}
-            </h2>
-            <p className="text-xs font-semibold text-slate-700">
-              Page 1 : LEDGER{" "}
-              {ledger.dateRange.startBsDate && ledger.dateRange.endBsDate ? (
-                <span>
-                  ( From {ledger.dateRange.startBsDate} to {ledger.dateRange.endBsDate} )
-                  <span className="text-slate-500 font-normal ml-1">
-                    [{ledger.dateRange.startDate} to {ledger.dateRange.endDate}]
-                  </span>
-                </span>
-              ) : ledger.dateRange.startBsDate ? (
-                <span>
-                  ( From {ledger.dateRange.startBsDate} [{ledger.dateRange.startDate}] onwards )
-                </span>
-              ) : ledger.dateRange.endBsDate ? (
-                <span>
-                  ( Up to {ledger.dateRange.endBsDate} [{ledger.dateRange.endDate}] )
-                </span>
-              ) : (
-                <span>( Full Statement )</span>
-              )}
-            </p>
-            <div className="pt-2 text-left">
-              <span className="text-xs sm:text-sm font-bold uppercase text-slate-800">
-                Account : {ledger.party.name}
-              </span>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 mt-0.5">
-                {ledger.party.panVatNumber && (
-                  <span>PAN/VAT: {ledger.party.panVatNumber}</span>
-                )}
-                {ledger.party.phone && <span>Ph: {ledger.party.phone}</span>}
-                {ledger.party.address && <span>Address: {ledger.party.address}</span>}
-              </div>
-            </div>
-          </div>
-
+        <div className="ledger-sheet bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-10 font-sans print:border-none print:shadow-none print:p-0 print:m-0 text-slate-900">
+          {/* Landscape, compact print layout like the client's paper ledger */}
+          <style>{`
+            @media print {
+              @page {
+                size: A4 landscape;
+                margin: 8mm;
+                @bottom-right {
+                  content: "Page " counter(page) " of " counter(pages);
+                  font-size: 9px;
+                }
+              }
+              .ledger-sheet td,
+              .ledger-sheet th {
+                padding-top: 2px !important;
+                padding-bottom: 2px !important;
+              }
+              .ledger-sheet tr {
+                break-inside: avoid;
+              }
+            }
+          `}</style>
           {/* Ledger Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
+            <table className="w-full text-xs border-collapse print:text-[9px] print:leading-tight">
               <thead>
-                <tr className="border-y border-slate-300 bg-slate-50/80 font-bold text-slate-700 text-left">
+                {/* Statement header lives inside <thead> so the browser repeats
+                    it (including the party name) at the top of every printed page. */}
+                <tr>
+                  <th colSpan={9} className="p-0 pb-3 text-center font-normal print:pb-1.5">
+                    <h2 className="text-base sm:text-lg font-extrabold uppercase tracking-wide text-slate-950 print:text-[13px]">
+                      {ledger.party.name} {ledger.organization.fiscalYear}
+                    </h2>
+                    {(ledger.party.panVatNumber || ledger.party.phone || ledger.party.address) && (
+                      <div className="flex flex-wrap items-center justify-center gap-x-4 text-[11px] font-normal text-slate-500 print:text-[9px]">
+                        {ledger.party.panVatNumber && (
+                          <span>PAN/VAT: {ledger.party.panVatNumber}</span>
+                        )}
+                        {ledger.party.phone && <span>Ph: {ledger.party.phone}</span>}
+                        {ledger.party.address && <span>{ledger.party.address}</span>}
+                      </div>
+                    )}
+                    <p className="mt-0.5 text-xs font-semibold text-slate-700 print:text-[10px]">
+                      LEDGER{" "}
+                      {periodFrom && periodTo ? (
+                        <span>
+                          ( From {periodFrom} to {periodTo} )
+                        </span>
+                      ) : (
+                        <span>( Full Statement )</span>
+                      )}
+                    </p>
+                    <div className="mt-2 flex items-baseline gap-3 border-y border-slate-300 py-1.5 print:mt-1 print:py-1">
+                      <span className="text-xs font-semibold text-slate-500 print:text-[10px]">
+                        Account
+                      </span>
+                      <span className="text-sm sm:text-base font-bold uppercase tracking-wide text-slate-900 print:text-[11px]">
+                        {ledger.organization.businessName}
+                      </span>
+                    </div>
+                  </th>
+                </tr>
+                <tr className="border-y border-slate-300 bg-slate-50/80 font-bold text-slate-700 text-left print:bg-transparent">
                   {/* Selection Checkbox Header (Hidden on Print) */}
                   <th className="print:hidden py-2 px-2 text-center w-8">
                     <input
@@ -598,12 +628,17 @@ export default function PartyLedgerPage({
                     return (
                       <tr
                         key={`${item.id}-${idx}`}
-                        className={`transition-colors hover:bg-slate-50/70 ${
+                        onClick={() => setViewEntry(item)}
+                        title="Click to view details"
+                        className={`cursor-pointer transition-colors hover:bg-sky-50/60 ${
                           !isSelected ? "opacity-60 bg-slate-50/30 print:hidden" : ""
                         }`}
                       >
                         {/* Checkbox column (Hidden when printing) */}
-                        <td className="print:hidden py-1.5 px-2 text-center">
+                        <td
+                          className="print:hidden py-1.5 px-2 text-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -733,6 +768,10 @@ export default function PartyLedgerPage({
           </div>
         </div>
       ) : null}
+
+      {viewEntry && (
+        <LedgerEntryModal partyId={partyId} entry={viewEntry} onClose={closeEntry} />
+      )}
     </div>
   );
 }

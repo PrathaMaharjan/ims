@@ -74,10 +74,10 @@ function InvoiceBody({ d }: { d: Extract<LedgerEntryDetail, { kind: "purchase" |
                 <tr key={idx}>
                   <td className="px-3 py-1.5 font-medium text-slate-800">{i.product}</td>
                   <td className="px-3 py-1.5 text-slate-600">{i.batchNumber || "—"}</td>
-                  <td className="px-3 py-1.5 text-right font-mono">{i.quantity}</td>
-                  <td className="px-3 py-1.5 text-right font-mono">{money(i.rate)}</td>
-                  <td className="px-3 py-1.5 text-center text-slate-500">{i.vatApplicable ? "Yes" : "No"}</td>
-                  <td className="px-3 py-1.5 text-right font-mono font-semibold">{money(i.lineTotal)}</td>
+                  <td className="px-3 py-1.5 text-right font-mono font-semibold text-slate-900">{i.quantity}</td>
+                  <td className="px-3 py-1.5 text-right font-mono font-semibold text-slate-900">{money(i.rate)}</td>
+                  <td className="px-3 py-1.5 text-center text-slate-600">{i.vatApplicable ? "Yes" : "No"}</td>
+                  <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-950">{money(i.lineTotal)}</td>
                 </tr>
               ))
             )}
@@ -223,7 +223,7 @@ export function LedgerEntryModal({
       <div
         role="dialog"
         aria-modal="true"
-        className="flex max-h-full w-full max-w-3xl flex-col rounded-xl bg-white shadow-xl"
+        className="flex max-h-full w-full max-w-3xl flex-col rounded-xl bg-white text-slate-900 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">

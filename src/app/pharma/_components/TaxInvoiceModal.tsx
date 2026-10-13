@@ -181,20 +181,28 @@ export function TaxInvoiceModal({
         >
           {/* Header Row: PAN and Copy Label */}
           <div className="flex items-center justify-between text-xs font-bold mb-1">
-            <span>PAN : {org.panVatNumber || "—"}</span>
+            <span>PAN : {data.partyPan || "—"}</span>
 
           </div>
 
-          {/* Business Header */}
+          {/* Header: the party we bought from / sold to on top, our organization as the account */}
           <div className="text-center space-y-0.5 border-b border-slate-950 pb-2 mb-2">
             <p className="font-bold text-xs tracking-wider">{titleLabel}</p>
             <h1 className="text-lg sm:text-xl font-extrabold uppercase tracking-wide">
-              {org.businessName}
+              {data.partyName}
             </h1>
-            {org.address && <p className="text-xs text-slate-700">{org.address}</p>}
-            <p className="text-[10px] text-slate-600">
-              {org.phone && <span>Tel. : {org.phone} </span>}
-              {org.email && <span>email : {org.email}</span>}
+            {data.partyAddress && <p className="text-xs text-slate-700">{data.partyAddress}</p>}
+            {data.partyPhone && (
+              <p className="text-[10px] text-slate-600">Tel. : {data.partyPhone}</p>
+            )}
+            <p className="pt-1 text-[11px] font-bold uppercase text-slate-800">
+              <span className="font-semibold normal-case text-slate-600">Account : </span>
+              {org.businessName}
+              {org.panVatNumber && (
+                <span className="ml-2 font-normal normal-case text-slate-600">
+                  (PAN : {org.panVatNumber})
+                </span>
+              )}
             </p>
           </div>
 

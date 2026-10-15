@@ -356,8 +356,10 @@ export default function TransactionsPage() {
                           <span className="text-slate-500">{row.partyName ?? "—"}</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 max-w-[260px] truncate text-slate-500" title={detail}>
-                        {detail}
+                      <td className="py-3 px-4 text-slate-500">
+                        <div className="max-w-40 line-clamp-2 wrap-break-word" title={detail}>
+                          {detail}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap font-semibold text-slate-800">
                         {formatCurrency(row.amount)}
@@ -474,7 +476,7 @@ function InfoCell({ label, children }: { label: string; children: React.ReactNod
   return (
     <div>
       <span className="block text-[10px] font-medium uppercase text-slate-400">{label}</span>
-      <span className="mt-0.5 block break-words text-sm font-semibold text-slate-800">{children}</span>
+      <span className="mt-0.5 block wrap-break-word text-sm font-semibold text-slate-800">{children}</span>
     </div>
   );
 }

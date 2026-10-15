@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     ChevronLeft, ChevronRight, ChevronDown, LogOut, Menu, X,
-    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Layers, FileText, UserPlus,
+    LayoutDashboard, Boxes, Receipt, ShoppingCart, Users, Wallet, BarChart3, Settings, Layers, FileText, UserPlus, ArrowLeftRight,
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 
-type IconKey = 'dashboard' | 'inventory' | 'batches' | 'purchase' | 'sales' | 'parties' | 'ledger' | 'expense' | 'analytics' | 'settings' | 'account';
+type IconKey = 'dashboard' | 'inventory' | 'batches' | 'purchase' | 'sales' | 'parties' | 'ledger' | 'expense' | 'analytics' | 'settings' | 'account' | 'transactions';
 
 const iconMap: Record<IconKey, LucideIcon> = {
     dashboard: LayoutDashboard,
@@ -24,6 +24,7 @@ const iconMap: Record<IconKey, LucideIcon> = {
     analytics: BarChart3,
     settings: Settings,
     account: UserPlus,
+    transactions: ArrowLeftRight,
 };
 
 /* A single navigable link. */
@@ -57,6 +58,7 @@ const defaultEntries: NavEntry[] = [
                 { match: '/pharma/batches', href: '/pharma/batches', label: 'Batches', icon: 'batches' },
                 { match: '/pharma/purchase', href: '/pharma/purchase', label: 'Purchase', icon: 'purchase' },
                 { match: '/pharma/sales', href: '/pharma/sales', label: 'Sales', icon: 'sales' },
+                { match: '/pharma/transactions', href: '/pharma/transactions', label: 'All Transactions', icon: 'transactions' },
             ],
         },
     },

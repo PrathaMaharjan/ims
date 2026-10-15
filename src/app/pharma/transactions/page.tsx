@@ -206,9 +206,6 @@ export default function TransactionsPage() {
       {/* Header Banner */}
       <div className="rounded-xl bg-[#044d73] p-4 sm:px-6 sm:py-5 text-white shadow-sm">
         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">All Transactions</h1>
-        <p className="mt-1 text-xs sm:text-sm text-white/70">
-          Sales, purchases, returns and payments in one place
-        </p>
       </div>
 
       {/* Summary cards */}

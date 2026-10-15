@@ -60,8 +60,8 @@ type TypeFilter = "ALL" | "SALE" | "PURCHASE" | "SALE_RETURN" | "PURCHASE_RETURN
 const PAGE_LIMIT = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
-const TYPE_TABS: { value: TypeFilter; label: string }[] = [
-  { value: "ALL", label: "All" },
+const TYPE_OPTIONS: { value: TypeFilter; label: string }[] = [
+  { value: "ALL", label: "All types" },
   { value: "SALE", label: "Sales" },
   { value: "PURCHASE", label: "Purchases" },
   { value: "PURCHASE_RETURN", label: "Purchase Returns" },
@@ -189,11 +189,12 @@ export default function TransactionsPage() {
     };
   }, [requestKey, page, type, search, partyId, startDate, endDate]);
 
-  const hasFilters = Boolean(searchInput || partyId || startDate || endDate);
+  const hasFilters = Boolean(searchInput || type !== "ALL" || partyId || startDate || endDate);
 
   function clearFilters() {
     setSearchInput("");
     setSearch("");
+    setType("ALL");
     setPartyId("");
     setStartDate("");
     setEndDate("");
@@ -219,26 +220,7 @@ export default function TransactionsPage() {
       </div>
       {/* Filters */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col gap-4">
-        <div className="flex flex-wrap gap-2">
-          {TYPE_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => {
-                setType(tab.value);
-                setPage(1);
-              }}
-              className={`rounded-lg px-3.5 py-2 text-xs sm:text-sm font-semibold transition-colors ${
-                type === tab.value
-                  ? "bg-[#044d73] text-white shadow-sm"
-                  : "border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <div className="relative lg:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -248,6 +230,21 @@ export default function TransactionsPage() {
               className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#044d73]"
             />
           </div>
+          <select
+            value={type}
+            onChange={(e) => {
+              setType(e.target.value as TypeFilter);
+              setPage(1);
+            }}
+            aria-label="Transaction type"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-[#044d73]"
+          >
+            {TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           <select
             value={partyId}
             onChange={(e) => {

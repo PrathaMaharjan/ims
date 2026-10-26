@@ -209,7 +209,13 @@ function CreatableSelect({
     );
   }
 
-  const filteredManageOptions = options.filter((o) =>
+  const uniqueOptions = useMemo(() => {
+    return Array.from(
+      new Set(options.map((o) => o?.trim()).filter((o): o is string => Boolean(o))),
+    );
+  }, [options]);
+
+  const filteredManageOptions = uniqueOptions.filter((o) =>
     o.toLowerCase().includes(manageSearch.toLowerCase())
   );
 
@@ -221,7 +227,7 @@ function CreatableSelect({
         className={inputCls}
       >
         {noneLabel !== undefined && <option value="">{noneLabel}</option>}
-        {options.map((o) => (
+        {uniqueOptions.map((o) => (
           <option key={o} value={o}>
             {o}
           </option>
@@ -240,7 +246,7 @@ function CreatableSelect({
         <Plus className="h-4 w-4" />
       </button>
 
-      {onDelete && options.length > 0 && (
+      {onDelete && uniqueOptions.length > 0 && (
         <button
           type="button"
           onClick={() => setManaging((p) => !p)}
@@ -262,7 +268,7 @@ function CreatableSelect({
         >
           <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-[#044d73]">
-              Manage {noun}s ({options.length})
+              Manage {noun}s ({uniqueOptions.length})
             </span>
             <button
               type="button"

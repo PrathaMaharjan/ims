@@ -7,6 +7,7 @@ import {
   AlertCircle, Calendar, RotateCcw, Printer, User, UserPlus, Package,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 import { DotsLoader } from "../_components/ui/dots-loader";
 import { TaxInvoiceModal, TaxInvoiceData, InvoiceItem } from "../_components/TaxInvoiceModal";
@@ -686,6 +687,8 @@ function SupplierPicker({
 const ITEMS_PER_PAGE = 8;
 
 export default function PurchasePage() {
+  const { user } = useAuth();
+  const isOwner = user?.isOwner ?? false;
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -956,6 +959,21 @@ export default function PurchasePage() {
   useEffect(() => {
     loadPurchases();
   }, [loadPurchases]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || products.length === 0) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const editId = urlParams.get("edit");
+    if (editId && !editingPurchaseId && !isModalOpen) {
+      api.get(`/api/purchases/${editId}`).then((res) => {
+        if (res.data?.purchase) {
+          openEdit(res.data.purchase);
+        }
+      }).catch((err) => {
+        console.error("Failed to load purchase from edit query param:", err);
+      });
+    }
+  }, [products]);
 
   /* ---- Filter logic ---- */
 
@@ -1522,14 +1540,16 @@ export default function PurchasePage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Purchase</h1>
         </div>
-        <button
-          onClick={openAdd}
-          disabled={loadingCatalog}
-          className="flex items-center justify-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" strokeWidth={2.5} />
-          New Purchase
-        </button>
+        {isOwner && (
+          <button
+            onClick={openAdd}
+            disabled={loadingCatalog}
+            className="flex items-center justify-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+            New Purchase
+          </button>
+        )}
       </div>
 
       {loadError && (
@@ -1819,22 +1839,26 @@ export default function PurchasePage() {
                         >
                           <Printer className="w-4 h-4" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openEdit(p); }}
-                          title="Edit Purchase"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(p.id); setDeleteError(null); }}
-                          title="Delete"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {isOwner && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openEdit(p); }}
+                              title="Edit Purchase"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(p.id); setDeleteError(null); }}
+                              title="Delete"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -2126,13 +2150,15 @@ export default function PurchasePage() {
                 >
                   <Printer className="w-3.5 h-3.5" /> Print / Download Voucher
                 </button>
-                <button
-                  type="button"
-                  onClick={() => { const p = viewingPurchase; setViewingPurchase(null); openEdit(p); }}
-                  className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-[#044d73]/5 hover:bg-[#044d73]/10 px-4 py-2 text-xs font-semibold text-[#044d73] transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5" /> Edit Purchase
-                </button>
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => { const p = viewingPurchase; setViewingPurchase(null); openEdit(p); }}
+                    className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-[#044d73]/5 hover:bg-[#044d73]/10 px-4 py-2 text-xs font-semibold text-[#044d73] transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Edit Purchase
+                  </button>
+                )}
               </div>
               <button
                 type="button"

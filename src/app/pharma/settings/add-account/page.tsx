@@ -20,9 +20,12 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
+  ShieldCheck,
+  Printer,
+  ShieldAlert,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
-
+import { useAuth } from "@/context/auth-context";
 
 const PAGE_SIZE = 10;
 const MIN_PASSWORD = 8;
@@ -31,6 +34,7 @@ interface AccountItem {
   id: string;
   name: string;
   email: string;
+  isOwner: boolean;
   createdAt: string;
 }
 
@@ -54,6 +58,9 @@ function getErrorMessage(err: unknown, fallback: string): string {
 }
 
 export default function AddAccountPage() {
+  const { user: currentUser } = useAuth();
+  const isCurrentUserOwner = currentUser?.isOwner ?? false;
+
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -76,6 +83,7 @@ export default function AddAccountPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -83,6 +91,7 @@ export default function AddAccountPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AccountItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [updatingRoleUserId, setUpdatingRoleUserId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -144,6 +153,7 @@ export default function AddAccountPage() {
     setEmail("");
     setPassword("");
     setConfirmPassword("");
+    setIsOwner(false);
     setFormError(null);
     setShowPassword(false);
     setShowConfirmPassword(false);
@@ -157,6 +167,24 @@ export default function AddAccountPage() {
   function handleCloseModal() {
     resetForm();
     setIsModalOpen(false);
+  }
+
+  async function handleToggleRole(account: AccountItem) {
+    if (!isCurrentUserOwner) return;
+    setUpdatingRoleUserId(account.id);
+    try {
+      await api.patch(`/api/staff/${account.id}`, {
+        isOwner: !account.isOwner,
+      });
+      triggerToast(
+        `Updated ${account.name}'s role to ${!account.isOwner ? "Full Access" : "Read-Only & Print PDF"}.`
+      );
+      await fetchAccounts();
+    } catch (err) {
+      triggerToast(getErrorMessage(err, "Failed to update account role."));
+    } finally {
+      setUpdatingRoleUserId(null);
+    }
   }
 
   async function handleCreateAccount(e: React.FormEvent) {
@@ -193,6 +221,7 @@ export default function AddAccountPage() {
         name: trimmedName,
         email: trimmedEmail,
         password,
+        isOwner,
       });
 
       resetForm();
@@ -259,6 +288,16 @@ export default function AddAccountPage() {
         </div>
       </div>
 
+      {/* Read-Only Notice for Non-Owners */}
+      {!isCurrentUserOwner && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4 text-xs text-sky-900 flex items-center gap-3">
+          <ShieldAlert className="h-5 w-5 text-[#044d73] shrink-0" />
+          <div>
+            <span className="font-semibold">Read-Only Mode:</span> Your account has read-only access. You can view existing accounts and details, but only owners with full access can create, modify, or remove accounts.
+          </div>
+        </div>
+      )}
+
       {/* Main Section Card */}
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm overflow-hidden">
         {/* Top Controls Bar */}
@@ -270,7 +309,6 @@ export default function AddAccountPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-800">Existing Accounts</h2>
-
               </div>
             </div>
           </div>
@@ -297,15 +335,17 @@ export default function AddAccountPage() {
               )}
             </div>
 
-            {/* Add User Modal Trigger Button */}
-            <button
-              type="button"
-              onClick={handleOpenModal}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#044d73] hover:bg-[#033b59] px-4 py-2 text-xs sm:text-sm font-semibold text-white transition-all shrink-0 shadow-sm active:scale-[0.98]"
-            >
-              <UserPlus className="h-4 w-4" />
-              <span>Add User</span>
-            </button>
+            {/* Add User Modal Trigger Button (Owner Only) */}
+            {isCurrentUserOwner && (
+              <button
+                type="button"
+                onClick={handleOpenModal}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#044d73] hover:bg-[#033b59] px-4 py-2 text-xs sm:text-sm font-semibold text-white transition-all shrink-0 shadow-sm active:scale-[0.98]"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>Add User</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -344,15 +384,16 @@ export default function AddAccountPage() {
               >
                 Clear search filter
               </button>
-            ) : (
+            ) : isCurrentUserOwner ? (
               <button
                 type="button"
                 onClick={handleOpenModal}
                 className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-[#044d73] hover:underline"
               >
-
+                <UserPlus className="h-3.5 w-3.5" />
+                <span>Add your first account</span>
               </button>
-            )}
+            ) : null}
           </div>
         ) : (
           <div className={`overflow-x-auto transition-opacity ${isLoading ? "opacity-60" : ""}`}>
@@ -361,6 +402,7 @@ export default function AddAccountPage() {
                 <tr className="bg-slate-50 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   <th className="py-3.5 px-6">Name</th>
                   <th className="py-3.5 px-6">Email Address</th>
+                  <th className="py-3.5 px-6">Access Level</th>
                   <th className="py-3.5 px-6">Date Added</th>
                   <th className="py-3.5 px-6 text-right">Actions</th>
                 </tr>
@@ -402,6 +444,22 @@ export default function AddAccountPage() {
                         </div>
                       </td>
 
+                      {/* Access Level Badge */}
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        {account.isOwner ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Full Access
+                          </span>
+
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs">
+                            <Printer className="h-3.5 w-3.5 text-slate-500" />
+                            Read-Only &amp; Print
+                          </span>
+                        )}
+                      </td>
+
                       {/* Created Date */}
                       <td className="py-4 px-6 whitespace-nowrap text-slate-500">
                         <div className="flex items-center gap-1.5 text-xs">
@@ -412,15 +470,38 @@ export default function AddAccountPage() {
 
                       {/* Actions */}
                       <td className="py-4 px-6 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(account)}
-                          title="Delete account"
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-
-                        </button>
+                        {isCurrentUserOwner ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRole(account)}
+                              disabled={updatingRoleUserId === account.id}
+                              title={account.isOwner ? "Change to Read-Only & Print" : "Change to Full Access"}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 hover:text-[#044d73] hover:bg-sky-50 border border-slate-200 hover:border-sky-200 transition-colors disabled:opacity-50"
+                            >
+                              {updatingRoleUserId === account.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : account.isOwner ? (
+                                <Printer className="h-3.5 w-3.5" />
+                              ) : (
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                              )}
+                              <span className="hidden sm:inline">
+                                {account.isOwner ? "Set Read-Only" : "Set Full Access"}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(account)}
+                              title="Delete account"
+                              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs italic">View only</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -536,6 +617,110 @@ export default function AddAccountPage() {
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
                     />
+                  </div>
+                </div>
+
+                {/* Account Access Level Selection */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Account Access Level <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[11px] font-medium text-slate-500">
+                      {isOwner ? "Full Control" : "Read-Only + PDF"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Read-Only & Print Option */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setIsOwner(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") setIsOwner(false);
+                      }}
+                      className={`cursor-pointer flex flex-col text-left p-3.5 rounded-xl border-2 transition-all relative ${!isOwner
+                        ? "border-[#044d73] bg-sky-50/60 shadow-xs ring-2 ring-sky-100"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
+                        }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${!isOwner
+                              ? "bg-[#044d73] text-white"
+                              : "bg-slate-100 text-slate-500"
+                              }`}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">
+                              Read-Only &amp; Print
+                            </span>
+
+
+
+                          </div>
+                        </div>
+                        <div
+                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${!isOwner
+                            ? "border-[#044d73] bg-[#044d73]"
+                            : "border-slate-300"
+                            }`}
+                        >
+                          {!isOwner && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                        </div>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-slate-500">
+                        Can view records, ledgers, and print or download Tax Invoices and PDF reports. Cannot create, edit, or delete any data.
+                      </p>
+                    </div>
+
+                    {/* Full Access Option */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setIsOwner(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") setIsOwner(true);
+                      }}
+                      className={`cursor-pointer flex flex-col text-left p-3.5 rounded-xl border-2 transition-all relative ${isOwner
+                        ? "border-emerald-600 bg-emerald-50/60 shadow-xs ring-2 ring-emerald-100"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
+                        }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${isOwner
+                              ? "bg-emerald-600 text-white"
+                              : "bg-slate-100 text-slate-500"
+                              }`}
+                          >
+                            <ShieldCheck className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">
+                              Full Access
+                            </span>
+
+                          </div>
+                        </div>
+                        <div
+                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${isOwner
+                            ? "border-emerald-600 bg-emerald-600"
+                            : "border-slate-300"
+                            }`}
+                        >
+                          {isOwner && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                        </div>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-slate-500">
+                        Full administrative access to create sales, purchases, edit and delete transactions, manage inventory, and staff accounts.
+                      </p>
+                    </div>
                   </div>
                 </div>
 

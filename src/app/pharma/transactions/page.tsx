@@ -2,8 +2,20 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Printer, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Printer,
+  Search,
+  X,
+  Pencil,
+  Trash2,
+  AlertTriangle,
+  Check,
+} from "lucide-react";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 import { DotsLoader } from "@/app/pharma/_components/ui/dots-loader";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 import { TaxInvoiceModal, type InvoiceItem, type TaxInvoiceData } from "../_components/TaxInvoiceModal";
@@ -115,6 +127,9 @@ function titleCase(value: string) {
 }
 
 export default function TransactionsPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const isOwner = user?.isOwner ?? false;
   const [rows, setRows] = useState<TransactionRow[]>([]);
   const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
   const [pagination, setPagination] = useState<Pagination>({
@@ -132,14 +147,29 @@ export default function TransactionsPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
+  const [refreshCount, setRefreshCount] = useState(0);
+
+  // Modal states
+  const [selectedRow, setSelectedRow] = useState<TransactionRow | null>(null);
+  const [deletingRow, setDeletingRow] = useState<TransactionRow | null>(null);
+  const [editingPaymentRow, setEditingPaymentRow] = useState<TransactionRow | null>(null);
 
   // Loading is derived: data counts as loaded once it was fetched for the current filters.
-  const requestKey = JSON.stringify({ page, type, search, partyId, startDate, endDate });
-  const [selectedRow, setSelectedRow] = useState<TransactionRow | null>(null);
+  const requestKey = JSON.stringify({ page, type, search, partyId, startDate, endDate, refreshCount });
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const loading = loadedKey !== requestKey && errorKey !== requestKey;
   const error = errorKey === requestKey ? "Failed to load transactions. Please try again." : "";
+
+  function handleEdit(row: TransactionRow) {
+    if (row.kind === "SALE") {
+      router.push(`/pharma/sales?edit=${row.id}`);
+    } else if (row.kind === "PURCHASE") {
+      router.push(`/pharma/purchase?edit=${row.id}`);
+    } else if (row.kind === "PAYMENT_RECEIVED" || row.kind === "PAYMENT_PAID") {
+      setEditingPaymentRow(row);
+    }
+  }
 
   // Party dropdown options (loaded once)
   useEffect(() => {
@@ -316,6 +346,7 @@ export default function TransactionsPage() {
                   <th className="py-3 px-4 text-right">Paid</th>
                   <th className="py-3 px-4 text-right">Due</th>
                   <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -377,6 +408,42 @@ export default function TransactionsPage() {
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
+                      <td
+                        className="py-3 px-4 text-right whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {isOwner ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            {(row.kind === "SALE" ||
+                              row.kind === "PURCHASE" ||
+                              row.kind === "PAYMENT_RECEIVED" ||
+                              row.kind === "PAYMENT_PAID") && (
+                              <button
+                                type="button"
+                                onClick={() => handleEdit(row)}
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-2xs hover:border-[#044d73] hover:bg-[#044d73]/5 hover:text-[#044d73] transition-colors"
+                                title={`Edit ${badge.label}`}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                <span className="hidden lg:inline">Edit</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setDeletingRow(row)}
+                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-rose-600 shadow-2xs hover:border-rose-300 hover:bg-rose-50 transition-colors"
+                              title={`Delete ${badge.label}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              <span className="hidden lg:inline">Delete</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            View &amp; Print only
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -417,7 +484,32 @@ export default function TransactionsPage() {
         <TransactionDetailModal
           key={`${selectedRow.kind}-${selectedRow.id}`}
           row={selectedRow}
+          isOwner={isOwner}
           onClose={() => setSelectedRow(null)}
+          onEdit={(row) => handleEdit(row)}
+          onDelete={(row) => setDeletingRow(row)}
+        />
+      )}
+
+      {deletingRow && (
+        <DeleteConfirmationModal
+          row={deletingRow}
+          onClose={() => setDeletingRow(null)}
+          onDeleted={() => {
+            if (selectedRow?.id === deletingRow.id) setSelectedRow(null);
+            setRefreshCount((c) => c + 1);
+          }}
+        />
+      )}
+
+      {editingPaymentRow && (
+        <EditPaymentModal
+          row={editingPaymentRow}
+          onClose={() => setEditingPaymentRow(null)}
+          onSaved={() => {
+            if (selectedRow?.id === editingPaymentRow.id) setSelectedRow(null);
+            setRefreshCount((c) => c + 1);
+          }}
         />
       )}
     </div>
@@ -542,7 +634,19 @@ function buildInvoiceData(row: TransactionRow, d: DetailData): TaxInvoiceData | 
   };
 }
 
-function TransactionDetailModal({ row, onClose }: { row: TransactionRow; onClose: () => void }) {
+function TransactionDetailModal({
+  row,
+  isOwner = false,
+  onClose,
+  onEdit,
+  onDelete,
+}: {
+  row: TransactionRow;
+  isOwner?: boolean;
+  onClose: () => void;
+  onEdit: (row: TransactionRow) => void;
+  onDelete: (row: TransactionRow) => void;
+}) {
   // null = still loading
   const [result, setResult] = useState<{ detail: DetailData | null } | null>(null);
   const [printData, setPrintData] = useState<TaxInvoiceData | null>(null);
@@ -801,6 +905,33 @@ function TransactionDetailModal({ row, onClose }: { row: TransactionRow; onClose
                 View Party Ledger
               </Link>
             )}
+            {isOwner && (row.kind === "SALE" ||
+              row.kind === "PURCHASE" ||
+              row.kind === "PAYMENT_RECEIVED" ||
+              row.kind === "PAYMENT_PAID") && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onEdit(row);
+                }}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-[#044d73] transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </button>
+            )}
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onDelete(row);
+                }}
+                className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </button>
+            )}
           </div>
           <button
             type="button"
@@ -816,6 +947,342 @@ function TransactionDetailModal({ row, onClose }: { row: TransactionRow; onClose
     {/* Sibling, not a child: portal clicks would bubble up to the overlay above and close it. */}
     {printData && <TaxInvoiceModal data={printData} onClose={() => setPrintData(null)} />}
     </>
+  );
+}
+
+function DeleteConfirmationModal({
+  row,
+  onClose,
+  onDeleted,
+}: {
+  row: TransactionRow;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const badge = KIND_BADGE[row.kind];
+
+  const handleDelete = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await api.delete(`/api/transactions/${row.kind}/${row.id}`);
+      onDeleted();
+      onClose();
+    } catch (err: any) {
+      console.error("Failed to delete transaction:", err);
+      setError(err?.response?.data?.error || err.message || "Failed to delete transaction");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getWarning = () => {
+    switch (row.kind) {
+      case "SALE":
+        return "Deleting this sale will permanently remove the invoice and return all sold item quantities back to their respective batches and product inventory.";
+      case "PURCHASE":
+        return "Deleting this purchase will permanently remove the bill and deduct the received stock from inventory. If any item has already been sold or moved, deletion will be blocked.";
+      case "PAYMENT_RECEIVED":
+        return "Deleting this payment receipt will remove the payment from the party ledger and recalculate the customer invoice payment status.";
+      case "PAYMENT_PAID":
+        return "Deleting this payment voucher will remove the payment from the party ledger and recalculate the supplier bill payment status.";
+      case "SALE_RETURN":
+        return "Deleting this sale return will remove the return record and reverse any stock adjustments made.";
+      case "PURCHASE_RETURN":
+        return "Deleting this purchase return will remove the return record and restore available stock.";
+      default:
+        return "Are you sure you want to delete this transaction? This action cannot be undone.";
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 text-rose-600 mb-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 border border-rose-100">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Delete Transaction</h3>
+            <p className="text-xs text-slate-500">This action cannot be undone.</p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 mb-4 text-xs space-y-1.5">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Transaction:</span>
+            <span className="font-semibold text-slate-800">{row.voucherNo}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-500">Type:</span>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge.className}`}>
+              {badge.label}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Party:</span>
+            <span className="font-semibold text-slate-800">{row.partyName ?? "—"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Date:</span>
+            <span className="text-slate-700">{formatDate(row.date)}</span>
+          </div>
+          <div className="flex justify-between border-t border-slate-200/80 pt-1.5 font-bold">
+            <span className="text-slate-700">Amount:</span>
+            <span className="text-[#044d73]">{formatCurrency(row.amount)}</span>
+          </div>
+        </div>
+
+        <p className="text-xs mb-4 leading-relaxed bg-amber-50/80 border border-amber-200/60 rounded-lg p-3 text-amber-900">
+          {getWarning()}
+        </p>
+
+        {error && (
+          <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+            {error}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-rose-700 transition-colors disabled:opacity-50"
+          >
+            {loading ? <DotsLoader size="sm" /> : <Trash2 className="h-3.5 w-3.5" />}
+            {loading ? "Deleting..." : "Delete Permanently"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditPaymentModal({
+  row,
+  onClose,
+  onSaved,
+}: {
+  row: TransactionRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [amount, setAmount] = useState(String(row.amount || ""));
+  const [date, setDate] = useState(row.date);
+  const [method, setMethod] = useState(row.method || "CASH");
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [notes, setNotes] = useState(row.details || "");
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const isReceived = row.kind === "PAYMENT_RECEIVED";
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get(`/api/transactions/${row.kind}/${row.id}`)
+      .then((res) => {
+        if (!cancelled && res.data?.detail) {
+          const d = res.data.detail;
+          const refField = d.fields?.find((f: any) => f.label === "Reference No.");
+          if (refField && refField.value !== "—") {
+            setReferenceNumber(refField.value);
+          }
+          const notesField = d.fields?.find((f: any) => f.label === "Notes");
+          if (notesField && notesField.value !== "—") {
+            setNotes(notesField.value);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load payment detail for edit:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setFetching(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [row.kind, row.id]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const numAmt = parseFloat(amount);
+    if (isNaN(numAmt) || numAmt <= 0) {
+      setError("Please enter a valid amount greater than 0");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      await api.patch(`/api/transactions/${row.kind}/${row.id}`, {
+        amount: numAmt,
+        paymentDate: date,
+        method,
+        referenceNumber: referenceNumber.trim() || null,
+        notes: notes.trim() || null,
+      });
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      console.error("Failed to update payment:", err);
+      setError(err?.response?.data?.error || err.message || "Failed to update payment");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between bg-[#044d73] px-6 py-4 text-white">
+          <div>
+            <h3 className="text-base font-bold">
+              {isReceived ? "Edit Customer Payment Receipt" : "Edit Supplier Payment Voucher"}
+            </h3>
+            <p className="text-xs text-white/80">
+              {row.voucherNo} {row.partyName ? `· ${row.partyName}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {fetching ? (
+            <div className="py-8">
+              <DotsLoader text="Loading payment details..." size="md" />
+            </div>
+          ) : (
+            <>
+              {error && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Amount (NPR) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 font-mono outline-none focus:border-[#044d73] focus:ring-2 focus:ring-[#044d73]/10"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Payment Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#044d73]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Payment Method</label>
+                  <select
+                    value={method}
+                    onChange={(e) => setMethod(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#044d73]"
+                  >
+                    <option value="CASH">Cash</option>
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                    <option value="CHEQUE">Cheque</option>
+                    <option value="ESEWA">eSewa</option>
+                    <option value="KHALTI">Khalti</option>
+                    <option value="CARD">Card</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Reference / Cheque No.
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. CHQ-98124, TXN-10293..."
+                  value={referenceNumber}
+                  onChange={(e) => setReferenceNumber(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#044d73]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Notes / Remarks</label>
+                <textarea
+                  rows={2}
+                  placeholder="Optional details or remarks..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#044d73] resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={loading}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#044d73] px-5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#033b59] transition-colors disabled:opacity-50"
+                >
+                  {loading ? <DotsLoader size="sm" /> : <Check className="h-3.5 w-3.5" />}
+                  {loading ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </>
+          )}
+        </form>
+      </div>
+    </div>
   );
 }
 

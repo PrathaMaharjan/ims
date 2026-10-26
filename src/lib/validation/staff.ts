@@ -4,6 +4,7 @@ export const createStaffSchema = z.object({
   name: z.string().trim().min(2, "Name is required").max(100),
   email: z.string().trim().toLowerCase().email("Invalid email"),
   password: z.string().min(8, "Password must be at least 8 characters").max(72),
+  isOwner: z.boolean().default(false),
 });
 
 export const updateStaffSchema = z
@@ -11,6 +12,7 @@ export const updateStaffSchema = z
     name: z.string().trim().min(2).max(100).optional(),
     email: z.string().trim().toLowerCase().email().optional(),
     password: z.string().min(8).max(72).optional(),
+    isOwner: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" });
 

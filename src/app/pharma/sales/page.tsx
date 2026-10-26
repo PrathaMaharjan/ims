@@ -7,6 +7,7 @@ import {
   AlertCircle, User, UserPlus, Printer, Package,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 import { TaxInvoiceModal, TaxInvoiceData, InvoiceItem } from "../_components/TaxInvoiceModal";
 import { PartialPaymentModal } from "../_components/PartialPaymentModal";
@@ -669,6 +670,8 @@ function BatchPicker({
 /* ------------------------------------------------------------------ */
 
 export default function SalesPage() {
+  const { user } = useAuth();
+  const isOwner = user?.isOwner ?? false;
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: PAGE_LIMIT, total: 0, totalPages: 1 });
 
@@ -781,6 +784,21 @@ export default function SalesPage() {
   }, []);
 
   useEffect(() => { loadStats(); }, [loadStats]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || products.length === 0) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const editId = urlParams.get("edit");
+    if (editId && !editingSaleId && !isModalOpen) {
+      api.get(`/api/sales/${editId}`).then((res) => {
+        if (res.data?.sale) {
+          openEdit(res.data.sale);
+        }
+      }).catch((err) => {
+        console.error("Failed to load sale from edit query param:", err);
+      });
+    }
+  }, [products]);
 
   function applyStatsDelta(prev: SaleRecord | null, next: SaleRecord | null) {
     setStats((s) => {
@@ -1410,14 +1428,16 @@ export default function SalesPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Sales</h1>
 
         </div>
-        <button
-          onClick={openAdd}
-          disabled={loadingCatalog}
-          className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" strokeWidth={2.5} />
-          Add Sale
-        </button>
+        {isOwner && (
+          <button
+            onClick={openAdd}
+            disabled={loadingCatalog}
+            className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+            Add Sale
+          </button>
+        )}
       </div>
 
       {loadError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600 font-medium">{loadError}</div>}
@@ -1634,12 +1654,16 @@ export default function SalesPage() {
                         >
                           <Printer className="w-4 h-4" />
                         </button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(s); }} title="Edit Sale" className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(s.id); setDeleteError(null); }} title="Delete" className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {isOwner && (
+                          <>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(s); }} title="Edit Sale" className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors">
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(s.id); setDeleteError(null); }} title="Delete" className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1924,9 +1948,11 @@ export default function SalesPage() {
                 >
                   <Printer className="w-3.5 h-3.5" /> Print / Download Tax Invoice
                 </button>
-                <button type="button" onClick={() => { const s = viewingSale; setViewingSale(null); openEdit(s); }} className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-[#044d73]/5 hover:bg-[#044d73]/10 px-4 py-2 text-xs font-semibold text-[#044d73] transition-colors">
-                  <Pencil className="w-3.5 h-3.5" /> Edit Sale Voucher
-                </button>
+                {isOwner && (
+                  <button type="button" onClick={() => { const s = viewingSale; setViewingSale(null); openEdit(s); }} className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-[#044d73]/5 hover:bg-[#044d73]/10 px-4 py-2 text-xs font-semibold text-[#044d73] transition-colors">
+                    <Pencil className="w-3.5 h-3.5" /> Edit Sale Voucher
+                  </button>
+                )}
               </div>
               <button type="button" onClick={() => setViewingSale(null)} className="rounded-lg bg-slate-100 hover:bg-slate-200 px-5 py-2 text-xs font-semibold text-slate-700 transition-colors">Close</button>
             </div>

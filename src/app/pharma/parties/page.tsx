@@ -22,6 +22,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 import { DotsLoader } from "../_components/ui/dots-loader";
 
@@ -111,6 +112,8 @@ function TypeBadge({ type }: { type: PartyType }) {
 /* ------------------------------------------------------------------ */
 
 export default function PartiesPage() {
+  const { user } = useAuth();
+  const isOwner = user?.isOwner ?? false;
   const [parties, setParties] = useState<Party[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
@@ -395,13 +398,15 @@ export default function PartiesPage() {
           </select>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center justify-center gap-2 rounded-lg bg-[#044d73] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#033f60] w-full md:w-auto"
-        >
-          <UserPlus className="h-4 w-4" />
-          Add Party
-        </button>
+        {isOwner && (
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center justify-center gap-2 rounded-lg bg-[#044d73] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#033f60] w-full md:w-auto"
+          >
+            <UserPlus className="h-4 w-4" />
+            Add Party
+          </button>
+        )}
       </div>
 
       {/* Data Section Container */}
@@ -502,20 +507,24 @@ export default function PartiesPage() {
                             >
                               <FileText className="h-4 w-4" />
                             </Link>
-                            <button
-                              onClick={() => handleOpenEdit(party)}
-                              className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-[#044d73] transition-colors"
-                              title="Edit Party"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteTarget(party)}
-                              className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              title="Remove Party"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {isOwner && (
+                              <>
+                                <button
+                                  onClick={() => handleOpenEdit(party)}
+                                  className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-[#044d73] transition-colors"
+                                  title="Edit Party"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteTarget(party)}
+                                  className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                  title="Remove Party"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>

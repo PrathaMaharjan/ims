@@ -43,6 +43,7 @@ const publicColumns = {
   id: users.id,
   name: users.name,
   email: users.email,
+  isOwner: users.isOwner,
   createdAt: users.createdAt,
 };
 
@@ -50,6 +51,7 @@ type StaffRow = {
   id: string;
   name: string;
   email: string;
+  isOwner: boolean;
   createdAt: Date | string;
 };
 
@@ -88,6 +90,7 @@ export async function createStaff(
         name: input.name,
         email: input.email,
         passwordHash: password,
+        isOwner: input.isOwner ?? false,
       })
       .returning(publicColumns);
   } catch (err) {
@@ -194,6 +197,7 @@ export async function updateStaff(
   if (input.name) patch.name = input.name;
   if (input.email) patch.email = input.email;
   if (input.password) patch.passwordHash = await hashPassword(input.password);
+  if (input.isOwner !== undefined) patch.isOwner = input.isOwner;
 
   try {
     const [row] = await db

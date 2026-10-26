@@ -61,6 +61,12 @@ export async function POST(req: NextRequest) {
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (!auth.isOwner) {
+      return NextResponse.json(
+        { error: "Forbidden: Read-only accounts cannot create sales" },
+        { status: 403 },
+      );
+    }
 
     const body = await req.json();
     const parsed = createSaleSchema.safeParse(body);

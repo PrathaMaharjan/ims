@@ -19,6 +19,7 @@ import {
   FileText,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 
 /* ------------------------------------------------------------------ */
@@ -373,7 +374,13 @@ function CreatableSelect({
     );
   }
 
-  const filteredManageOptions = options.filter((o) =>
+  const uniqueOptions = useMemo(() => {
+    return Array.from(
+      new Set(options.map((o) => o?.trim()).filter((o): o is string => Boolean(o))),
+    );
+  }, [options]);
+
+  const filteredManageOptions = uniqueOptions.filter((o) =>
     o.toLowerCase().includes(manageSearch.toLowerCase()),
   );
 
@@ -385,7 +392,7 @@ function CreatableSelect({
         className={inputCls}
       >
         {noneLabel !== undefined && <option value="">{noneLabel}</option>}
-        {options.map((o) => (
+        {uniqueOptions.map((o) => (
           <option key={o} value={o}>
             {o}
           </option>
@@ -404,7 +411,7 @@ function CreatableSelect({
         <Plus className="h-4 w-4" />
       </button>
 
-      {onDelete && options.length > 0 && (
+      {onDelete && uniqueOptions.length > 0 && (
         <button
           type="button"
           onClick={() => setManaging((p) => !p)}
@@ -425,7 +432,7 @@ function CreatableSelect({
         >
           <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-[#044d73]">
-              Manage {noun}s ({options.length})
+              Manage {noun}s ({uniqueOptions.length})
             </span>
             <button
               type="button"
@@ -487,6 +494,8 @@ function CreatableSelect({
 /* ------------------------------------------------------------------ */
 
 export default function InventoryPage() {
+  const { user } = useAuth();
+  const isOwner = user?.isOwner ?? false;
   const [items, setItems] = useState<Item[]>([]);
   const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
   const [brands, setBrands] = useState<string[]>([]);
@@ -793,14 +802,16 @@ export default function InventoryPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Inventory</h1>
         </div>
-        <button
-          onClick={openAdd}
-          disabled={loadingCatalog}
-          className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" strokeWidth={2.5} />
-          Add Item
-        </button>
+        {isOwner && (
+          <button
+            onClick={openAdd}
+            disabled={loadingCatalog}
+            className="flex items-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+            Add Item
+          </button>
+        )}
       </div>
 
       {catalogError && (
@@ -1028,28 +1039,36 @@ export default function InventoryPage() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEdit(item);
-                            }}
-                            title="Edit Item"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteConfirmId(item.id);
-                            }}
-                            title="Delete"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {isOwner ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEdit(item);
+                                }}
+                                title="Edit Item"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-[#044d73] hover:bg-[#044d73]/10 transition-colors"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteConfirmId(item.id);
+                                }}
+                                title="Delete"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-medium px-2 py-1">
+                              View only
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1428,17 +1447,19 @@ export default function InventoryPage() {
                 </div>
 
                 <div className="flex items-center justify-between border-t border-slate-100 bg-white p-4 px-6">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const itm = viewingItem;
-                      setViewingItem(null);
-                      openEdit(itm);
-                    }}
-                    className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-[#044d73]/5 hover:bg-[#044d73]/10 px-4 py-2 text-xs font-semibold text-[#044d73] transition-colors"
-                  >
-                    <Pencil className="w-3.5 h-3.5" /> Edit Item Information
-                  </button>
+                  {isOwner ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const itm = viewingItem;
+                        setViewingItem(null);
+                        openEdit(itm);
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg border border-[#044d73]/30 bg-[#044d73]/5 hover:bg-[#044d73]/10 px-4 py-2 text-xs font-semibold text-[#044d73] transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Edit Item Information
+                    </button>
+                  ) : <div />}
                   <button
                     type="button"
                     onClick={() => setViewingItem(null)}

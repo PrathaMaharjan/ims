@@ -22,6 +22,7 @@ import {
   ListFilter,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 import { AnimatedStatValue } from "../_components/ui/animated-stat-value";
 
 interface ExpenseCategory {
@@ -321,6 +322,8 @@ function isInventoryExpense(e: { category?: { name: string } | null }) {
 }
 
 export default function ExpensesPage() {
+  const { user } = useAuth();
+  const isOwner = user?.isOwner ?? false;
   const [expenses, setExpenses] = useState<DisplayExpense[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -736,17 +739,19 @@ export default function ExpensesPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Expenses</h1>
         </div>
-        <button
-          onClick={() => {
-            resetForm();
-            setIsModalOpen(true);
-          }}
-          disabled={loadingCategories}
-          className="flex items-center justify-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" strokeWidth={2.5} />
-          Add Expense
-        </button>
+        {isOwner && (
+          <button
+            onClick={() => {
+              resetForm();
+              setIsModalOpen(true);
+            }}
+            disabled={loadingCategories}
+            className="flex items-center justify-center gap-2 bg-white text-[#044d73] hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+            Add Expense
+          </button>
+        )}
       </div>
 
       {loadError && (
@@ -978,25 +983,29 @@ export default function ExpensesPage() {
                           {formatCurrency(Number(expense.amount))}
                         </td>
                         <td className="py-4 px-4 text-right">
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity"
-                          >
-                            <button
-                              onClick={() => handleOpenEdit(expense)}
-                              className="rounded-md p-1.5 text-slate-400 hover:bg-[#044d73]/10 hover:text-[#044d73] transition-colors"
-                              title="Edit Expense"
+                          {isOwner ? (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity"
                             >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteTarget(expense)}
-                              className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              title="Remove Expense"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                              <button
+                                onClick={() => handleOpenEdit(expense)}
+                                className="rounded-md p-1.5 text-slate-400 hover:bg-[#044d73]/10 hover:text-[#044d73] transition-colors"
+                                title="Edit Expense"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteTarget(expense)}
+                                className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                title="Remove Expense"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-medium">View only</span>
+                          )}
                         </td>
                       </tr>
 

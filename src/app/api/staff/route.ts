@@ -41,6 +41,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await getAuth(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!auth.isOwner) {
+    return NextResponse.json({ error: "Forbidden: Only owners can add accounts" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = createStaffSchema.safeParse(body);

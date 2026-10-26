@@ -35,6 +35,9 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   const auth = await getAuth(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!auth.isOwner) {
+    return NextResponse.json({ error: "Forbidden: Only owners can edit accounts" }, { status: 403 });
+  }
   const { id } = await params;
 
   const body = await req.json().catch(() => null);
@@ -56,6 +59,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 export async function DELETE(req: NextRequest, { params }: Ctx) {
   const auth = await getAuth(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!auth.isOwner) {
+    return NextResponse.json({ error: "Forbidden: Only owners can delete accounts" }, { status: 403 });
+  }
   const { id } = await params;
   try {
     return NextResponse.json(await deleteStaff(auth.organizationId, auth.userId, id));

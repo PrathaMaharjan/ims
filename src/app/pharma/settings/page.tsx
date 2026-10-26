@@ -370,14 +370,20 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="flex items-center justify-end pt-4 border-t border-slate-100">
-                        <button
-                            type="submit"
-                            disabled={savingOrg}
-                            className="flex items-center justify-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50 w-full sm:w-auto"
-                        >
-                            <Save className="h-4 w-4" />
-                            {savingOrg ? "Saving..." : "Save Organization Details"}
-                        </button>
+                        {authUser?.isOwner ? (
+                            <button
+                                type="submit"
+                                disabled={savingOrg}
+                                className="flex items-center justify-center gap-2 rounded-lg bg-[#044d73] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#033f60] transition-colors disabled:opacity-50 w-full sm:w-auto"
+                            >
+                                <Save className="h-4 w-4" />
+                                {savingOrg ? "Saving..." : "Save Organization Details"}
+                            </button>
+                        ) : (
+                            <span className="text-xs text-slate-400 italic">
+                                Only owners can modify organization details (Read-Only)
+                            </span>
+                        )}
                     </div>
                 </form>
             )}

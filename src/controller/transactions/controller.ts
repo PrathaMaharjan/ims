@@ -10,8 +10,15 @@ import {
   saleReturns,
   sales,
 } from "@/db/schema";
-import { sql, type SQL } from "drizzle-orm";
-import type { ListTransactionsQuery, TransactionKind } from "@/lib/validation/transactions";
+import { sql, type SQL, and, eq } from "drizzle-orm";
+import type {
+  ListTransactionsQuery,
+  TransactionKind,
+  UpdatePaymentTransactionInput,
+} from "@/lib/validation/transactions";
+import { deleteSale } from "@/controller/sales/controller";
+import { deletePurchase } from "@/controller/purchase/controller";
+import { invalidateCache } from "@/lib/cache";
 
 export interface TransactionRow {
   id: string;
@@ -258,4 +265,228 @@ export async function listTransactions(
     },
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
+}
+
+export async function deleteTransaction(
+  organizationId: string,
+  kind: TransactionKind,
+  id: string,
+): Promise<{ success: true }> {
+  switch (kind) {
+    case "SALE": {
+      await deleteSale(organizationId, id);
+      return { success: true };
+    }
+
+    case "PURCHASE": {
+      await deletePurchase(organizationId, id);
+      return { success: true };
+    }
+
+    case "PAYMENT_RECEIVED":
+    case "PAYMENT_PAID": {
+      const payment = await db.query.payments.findFirst({
+        where: and(eq(payments.id, id), eq(payments.organizationId, organizationId)),
+      });
+      if (!payment) {
+        throw new Error("Payment transaction not found");
+      }
+
+      await db.delete(payments).where(eq(payments.id, id));
+
+      // If attached to a sale, recalculate sale status
+      if (payment.saleId) {
+        const remPayments = await db
+          .select({ amount: payments.amount })
+          .from(payments)
+          .where(and(eq(payments.organizationId, organizationId), eq(payments.saleId, payment.saleId)));
+        const totalPaid = remPayments.reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
+
+        const sale = await db.query.sales.findFirst({
+          where: and(eq(sales.id, payment.saleId), eq(sales.organizationId, organizationId)),
+          columns: { id: true, grandTotal: true },
+        });
+        if (sale) {
+          const grandTotal = parseFloat(sale.grandTotal) || 0;
+          let newStatus: "PAID" | "PARTIAL" | "UNPAID" = "UNPAID";
+          if (totalPaid >= grandTotal - 0.009) newStatus = "PAID";
+          else if (totalPaid > 0) newStatus = "PARTIAL";
+
+          await db.update(sales).set({ paymentStatus: newStatus }).where(eq(sales.id, payment.saleId));
+        }
+      }
+
+      // If attached to a purchase, recalculate purchase status
+      if (payment.purchaseId) {
+        const remPayments = await db
+          .select({ amount: payments.amount })
+          .from(payments)
+          .where(and(eq(payments.organizationId, organizationId), eq(payments.purchaseId, payment.purchaseId)));
+        const totalPaid = remPayments.reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
+
+        const purchase = await db.query.purchases.findFirst({
+          where: and(eq(purchases.id, payment.purchaseId), eq(purchases.organizationId, organizationId)),
+          columns: { id: true, grandTotal: true },
+        });
+        if (purchase) {
+          const grandTotal = parseFloat(purchase.grandTotal) || 0;
+          let newStatus: "PAID" | "PARTIAL" | "UNPAID" = "UNPAID";
+          if (totalPaid >= grandTotal - 0.009) newStatus = "PAID";
+          else if (totalPaid > 0) newStatus = "PARTIAL";
+
+          await db.update(purchases).set({ paymentStatus: newStatus }).where(eq(purchases.id, payment.purchaseId));
+        }
+      }
+
+      return { success: true };
+    }
+
+    case "SALE_RETURN": {
+      const ret = await db.query.saleReturns.findFirst({
+        where: and(eq(saleReturns.id, id), eq(saleReturns.organizationId, organizationId)),
+      });
+      if (!ret) throw new Error("Sale return not found");
+
+      if (ret.restocked) {
+        const saleItem = await db.query.saleItems.findFirst({
+          where: eq(saleItems.id, ret.saleItemId),
+        });
+
+        if (saleItem) {
+          await db
+            .update(batches)
+            .set({
+              quantityAvailable: sql`${batches.quantityAvailable} - ${ret.quantity}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, saleItem.batchId));
+
+          await db
+            .update(products)
+            .set({
+              stockQuantity: sql`${products.stockQuantity} - ${ret.quantity}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(products.id, saleItem.productId));
+
+          await invalidateCache(`products:list:${organizationId}`);
+          await invalidateCache(`products:one:${organizationId}:${saleItem.productId}`);
+        }
+      }
+
+      await db.delete(saleReturns).where(eq(saleReturns.id, id));
+      return { success: true };
+    }
+
+    case "PURCHASE_RETURN": {
+      const ret = await db.query.purchaseReturns.findFirst({
+        where: and(eq(purchaseReturns.id, id), eq(purchaseReturns.organizationId, organizationId)),
+      });
+      if (!ret) throw new Error("Purchase return not found");
+
+      const batch = await db.query.batches.findFirst({
+        where: eq(batches.id, ret.batchId),
+        columns: { id: true, productId: true },
+      });
+
+      if (batch) {
+        await db
+          .update(batches)
+          .set({
+            quantityAvailable: sql`${batches.quantityAvailable} + ${ret.quantity}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(batches.id, ret.batchId));
+
+        await db
+          .update(products)
+          .set({
+            stockQuantity: sql`${products.stockQuantity} + ${ret.quantity}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(products.id, batch.productId));
+
+        await invalidateCache(`products:list:${organizationId}`);
+        await invalidateCache(`products:one:${organizationId}:${batch.productId}`);
+      }
+
+      await db.delete(purchaseReturns).where(eq(purchaseReturns.id, id));
+      return { success: true };
+    }
+
+    default:
+      throw new Error(`Unsupported transaction kind for deletion: ${kind}`);
+  }
+}
+
+export async function updateTransaction(
+  organizationId: string,
+  kind: TransactionKind,
+  id: string,
+  input: UpdatePaymentTransactionInput,
+): Promise<{ success: true }> {
+  if (kind !== "PAYMENT_RECEIVED" && kind !== "PAYMENT_PAID") {
+    throw new Error(`Direct update through this endpoint is only supported for payments. Please use the dedicated editor.`);
+  }
+
+  const payment = await db.query.payments.findFirst({
+    where: and(eq(payments.id, id), eq(payments.organizationId, organizationId)),
+  });
+  if (!payment) throw new Error("Payment transaction not found");
+
+  const updates: Record<string, unknown> = {};
+  if (input.amount !== undefined) updates.amount = input.amount.toFixed(2);
+  if (input.paymentDate !== undefined) updates.paymentDate = input.paymentDate;
+  if (input.method !== undefined) updates.method = input.method;
+  if (input.referenceNumber !== undefined) updates.referenceNumber = input.referenceNumber;
+  if (input.notes !== undefined) updates.notes = input.notes;
+
+  if (Object.keys(updates).length > 0) {
+    await db.update(payments).set(updates).where(eq(payments.id, id));
+  }
+
+  // Recalculate parent sale or purchase payment status
+  if (input.amount !== undefined) {
+    if (payment.saleId) {
+      const allPayments = await db
+        .select({ amount: payments.amount })
+        .from(payments)
+        .where(and(eq(payments.organizationId, organizationId), eq(payments.saleId, payment.saleId)));
+      const totalPaid = allPayments.reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
+      const sale = await db.query.sales.findFirst({
+        where: and(eq(sales.id, payment.saleId), eq(sales.organizationId, organizationId)),
+        columns: { id: true, grandTotal: true },
+      });
+      if (sale) {
+        const grandTotal = parseFloat(sale.grandTotal) || 0;
+        let newStatus: "PAID" | "PARTIAL" | "UNPAID" = "UNPAID";
+        if (totalPaid >= grandTotal - 0.009) newStatus = "PAID";
+        else if (totalPaid > 0) newStatus = "PARTIAL";
+
+        await db.update(sales).set({ paymentStatus: newStatus }).where(eq(sales.id, payment.saleId));
+      }
+    }
+
+    if (payment.purchaseId) {
+      const allPayments = await db
+        .select({ amount: payments.amount })
+        .from(payments)
+        .where(and(eq(payments.organizationId, organizationId), eq(payments.purchaseId, payment.purchaseId)));
+      const totalPaid = allPayments.reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
+      const purchase = await db.query.purchases.findFirst({
+        where: and(eq(purchases.id, payment.purchaseId), eq(purchases.organizationId, organizationId)),
+        columns: { id: true, grandTotal: true },
+      });
+      if (purchase) {
+        const grandTotal = parseFloat(purchase.grandTotal) || 0;
+        let newStatus: "PAID" | "PARTIAL" | "UNPAID" = "UNPAID";
+        if (totalPaid >= grandTotal - 0.009) newStatus = "PAID";
+        else if (totalPaid > 0) newStatus = "PARTIAL";
+
+        await db.update(purchases).set({ paymentStatus: newStatus }).where(eq(purchases.id, payment.purchaseId));
+      }
+    }
+  }
+
+  return { success: true };
 }

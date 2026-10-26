@@ -25,3 +25,13 @@ export const listTransactionsQuerySchema = z.object({
 });
 
 export type ListTransactionsQuery = z.infer<typeof listTransactionsQuerySchema>;
+
+export const updatePaymentTransactionSchema = z.object({
+  amount: z.coerce.number().positive("Amount must be greater than 0").optional(),
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD").optional(),
+  method: z.string().trim().max(50).optional(),
+  referenceNumber: z.string().trim().max(100).nullable().optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+
+export type UpdatePaymentTransactionInput = z.infer<typeof updatePaymentTransactionSchema>;

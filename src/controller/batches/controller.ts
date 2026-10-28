@@ -10,9 +10,6 @@ import { invalidateCache } from "@/lib/cache";
 import { UpdateBatchInput } from "@/lib/validation/batches";
 import { and, asc, eq, exists, gt, or, SQL, sql } from "drizzle-orm";
 
-// Batches shown on the expiry screen: anything with stock left, plus batches
-// emptied by a purchase return or a write-off — so their Pending / Completed /
-// Written Off status stays visible instead of the row vanishing at 0 stock.
 function visibleOnExpiryScreen(): SQL | undefined {
   return or(
     gt(batches.quantityAvailable, 0),
@@ -49,7 +46,8 @@ const batchColumns = {
 
 const DEFAULT_NEAR_EXPIRY_DAYS = 90;
 
-function daysUntil(expiryDate: string): number {
+function daysUntil(expiryDate?: string | null): number {
+  if (!expiryDate) return 999999;
   const [y, m, d] = expiryDate.split("-").map(Number);
   const expiry = Date.UTC(y, m - 1, d);
 
@@ -87,30 +85,25 @@ export async function listBatchesForProduct(
     with: {
       party: { columns: { id: true, name: true } },
     },
-    orderBy: (table, { asc }) => [asc(table.expiryDate)], // FEFO order — soonest expiry first
+    orderBy: (table: any, { asc }: any) => [asc(table.expiryDate)], // FEFO order — soonest expiry first
   });
 
-  // Expiry status is derived here rather than trusted from the stored
-  // `status` column — that column is written "ACTIVE" at purchase time and
-  // nothing ever transitions it to EXPIRED, so relying on it silently
-  // mislabels old stock as active. Same CASE logic as the expiry report,
-  // so a batch never shows a different status on different screens.
+
   const withStatus = rows.map((b) => {
-    const daysLeft = daysUntil(b.expiryDate);
+    const daysLeft = b.expiryDate ? daysUntil(b.expiryDate) : null;
     const status: "EXPIRED" | "NEAR_EXPIRY" | "ACTIVE" =
-      daysLeft < 0
-        ? "EXPIRED"
-        : daysLeft <= withinDays
-          ? "NEAR_EXPIRY"
-          : "ACTIVE";
+      !b.expiryDate
+        ? "ACTIVE"
+        : (daysLeft ?? 0) < 0
+          ? "EXPIRED"
+          : (daysLeft ?? 0) <= withinDays
+            ? "NEAR_EXPIRY"
+            : "ACTIVE";
     return { ...b, status, daysLeft };
   });
 
-  // Stock is still "available to sell" as long as it isn't expired — a
-  // NEAR_EXPIRY batch is very much part of total stock, just flagged for
-  // attention. Only EXPIRED (and depleted, quantityAvailable = 0) drop out.
   const totalStock = withStatus.reduce(
-    (sum, b) => (b.status === "EXPIRED" ? sum : sum + b.quantityAvailable),
+    (sum: number, b: any) => (b.status === "EXPIRED" ? sum : sum + b.quantityAvailable),
     0,
   );
 
@@ -127,6 +120,7 @@ export type ExpiryStatus = "EXPIRED" | "NEAR_EXPIRY" | "ACTIVE";
 function expiryStatusSql(withinDays: number): SQL<ExpiryStatus> {
   return sql<ExpiryStatus>`
     CASE
+      WHEN ${batches.expiryDate} IS NULL THEN 'ACTIVE'
       WHEN ${batches.expiryDate} < CURRENT_DATE THEN 'EXPIRED'
       WHEN ${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int THEN 'NEAR_EXPIRY'
       ELSE 'ACTIVE'
@@ -136,12 +130,12 @@ function expiryStatusSql(withinDays: number): SQL<ExpiryStatus> {
 function statusFilter(status: string, withinDays: number): SQL | undefined {
   switch (status) {
     case "expired":
-      return sql`${batches.expiryDate} < CURRENT_DATE`;
+      return sql`${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} < CURRENT_DATE`;
     case "near":
-      return sql`${batches.expiryDate} >= CURRENT_DATE
+      return sql`${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} >= CURRENT_DATE
         AND ${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int`;
     case "ok":
-      return sql`${batches.expiryDate} > CURRENT_DATE + ${withinDays}::int`;
+      return sql`${batches.expiryDate} IS NULL OR ${batches.expiryDate} > CURRENT_DATE + ${withinDays}::int`;
     default:
       return undefined; // "all"
   }
@@ -154,8 +148,9 @@ export interface ExpiryBatchRow {
   productName: string;
   unit: string;
   partyName: string | null;
-  expiryDate: string; // "2026-10-12"
-  daysLeft: number; // negative once expired
+  manufacturingDate: string | null;
+  expiryDate: string | null; // "2026-10-12" or null
+  daysLeft: number | null; // negative once expired, null if no expiry date
   quantityAvailable: number;
   purchasePrice: number;
   valueAtRisk: number; // quantityAvailable * purchasePrice — what a write-off costs
@@ -198,6 +193,7 @@ export async function getExpiringBatches(
         productName: products.name,
         unit: products.unit,
         partyName: parties.name,
+        manufacturingDate: batches.manufacturingDate,
         expiryDate: batches.expiryDate,
         daysLeft: sql<number>`(${batches.expiryDate} - CURRENT_DATE)::int`,
         quantityAvailable: batches.quantityAvailable,
@@ -223,7 +219,7 @@ export async function getExpiringBatches(
   const total = Number(countRows[0]?.total ?? 0);
 
   return {
-    batches: rows.map((r) => ({
+    batches: rows.map((r: any) => ({
       ...r,
       purchasePrice: Number(r.purchasePrice),
       valueAtRisk: Number(r.valueAtRisk),
@@ -265,7 +261,7 @@ export async function assertBatchSellable(
       productId: batches.productId,
       batchNumber: batches.batchNumber,
       quantityAvailable: batches.quantityAvailable,
-      isExpired: sql<boolean>`${batches.expiryDate} < CURRENT_DATE`,
+      isExpired: sql<boolean>`${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} < CURRENT_DATE`,
     })
     .from(batches)
     .where(
@@ -318,11 +314,11 @@ export async function getExpirySummary(
 
   const [row] = await db
     .select({
-      expiredCount: sql<string>`count(*) filter (where ${batches.expiryDate} < CURRENT_DATE)`,
-      expiredValue: sql<string>`coalesce(sum(${value}) filter (where ${batches.expiryDate} < CURRENT_DATE), 0)`,
+      expiredCount: sql<string>`count(*) filter (where ${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} < CURRENT_DATE)`,
+      expiredValue: sql<string>`coalesce(sum(${value}) filter (where ${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} < CURRENT_DATE), 0)`,
 
-      nearCount: sql<string>`count(*) filter (where ${batches.expiryDate} >= CURRENT_DATE AND ${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int)`,
-      nearValue: sql<string>`coalesce(sum(${value}) filter (where ${batches.expiryDate} >= CURRENT_DATE AND ${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int), 0)`,
+      nearCount: sql<string>`count(*) filter (where ${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} >= CURRENT_DATE AND ${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int)`,
+      nearValue: sql<string>`coalesce(sum(${value}) filter (where ${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} >= CURRENT_DATE AND ${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int), 0)`,
     })
     .from(batches)
     .where(
@@ -391,7 +387,10 @@ export async function updateBatch(
     input.manufacturingDate !== undefined
       ? input.manufacturingDate
       : existing.manufacturingDate;
-  const exp = input.expiryDate ?? existing.expiryDate;
+  const exp =
+    input.expiryDate !== undefined
+      ? input.expiryDate
+      : existing.expiryDate;
   if (mfg && exp && mfg > exp) {
     throw new BatchUpdateError(
       "Expiry date must be after manufacturing date",
@@ -422,7 +421,7 @@ export async function updateBatch(
       : 0;
 
   // Both stock changes must commit together.
-  const updated = await db.transaction(async (tx) => {
+  const updated = await db.transaction(async (tx: any) => {
     const [updatedBatch] = await tx
       .update(batches)
       .set(updates)

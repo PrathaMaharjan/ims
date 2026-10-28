@@ -111,8 +111,8 @@ interface Supplier {
 interface BatchDetails {
   batchNo: string;
   qty: Num;
-  mfgDate: string;
-  expDate: string;
+  mfgDate?: string;
+  expDate?: string;
   mrp: Num;
   salePrice: Num;
   note?: string;
@@ -185,7 +185,7 @@ interface PurchaseRecord {
     productId: string;
     batchNumber: string;
     manufacturingDate: string | null;
-    expiryDate: string;
+    expiryDate: string | null;
     quantity: number;
     purchaseRate: string;
     mrp: string;
@@ -1129,7 +1129,7 @@ export default function PurchasePage() {
         rate: Number(li.purchaseRate),
         amount: amt,
         batchNumber: li.batchNumber,
-        expiryDate: li.expiryDate,
+        expiryDate: li.expiryDate ?? undefined,
       };
     });
 
@@ -1192,7 +1192,7 @@ export default function PurchasePage() {
             batchNo: it.batchNumber,
             qty: it.quantity,
             mfgDate: it.manufacturingDate ?? "",
-            expDate: it.expiryDate,
+            expDate: it.expiryDate ?? "",
             mrp: Number(it.mrp),
             salePrice: it.batch?.salePrice ? Number(it.batch.salePrice) : "",
             note: it.batch?.note ?? "", // ADDED — restores the saved note when editing
@@ -1320,9 +1320,6 @@ export default function PurchasePage() {
   const missingBatch = form.items.some(
     li => li.itemId && n(li.qty) > 0 && (!li.batch?.batchNo || !li.batch.batchNo.trim())
   );
-  const missingExpiry = form.items.some(
-    li => li.itemId && n(li.qty) > 0 && (!li.batch?.expDate || !li.batch.expDate.trim())
-  );
 
   const subtotal = subtotalOf(form.items);
   const vatEstimate = estimateVat(form.items, form.purcType, form.vatRate);
@@ -1373,8 +1370,8 @@ export default function PurchasePage() {
         batch: {
           batchNumber: li.batch!.batchNo.trim(),
           quantity: n(li.qty),
-          expiryDate: li.batch!.expDate,
-          manufacturingDate: li.batch!.mfgDate || undefined,
+          expiryDate: li.batch!.expDate?.trim() || undefined,
+          manufacturingDate: li.batch!.mfgDate?.trim() || undefined,
           mrp: li.batch!.mrp === "" ? undefined : n(li.batch!.mrp),
           salePrice: li.batch!.salePrice === "" ? undefined : n(li.batch!.salePrice),
           note: li.batch!.note?.trim() || undefined, // ADDED — was being dropped before this
@@ -1385,7 +1382,7 @@ export default function PurchasePage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.partyId || validItems.length === 0 || missingBatch || missingExpiry) return;
+    if (!form.partyId || validItems.length === 0 || missingBatch) return;
 
     setSaving(true);
     setSaveError(null);
@@ -2062,6 +2059,7 @@ export default function PurchasePage() {
                         <th className="py-2.5 px-3">#</th>
                         <th className="py-2.5 px-3">Item Name</th>
                         <th className="py-2.5 px-3">Batch No</th>
+                        <th className="py-2.5 px-3">Mfg Date</th>
                         <th className="py-2.5 px-3">Expiry</th>
                         <th className="py-2.5 px-3 text-center">Qty</th>
                         <th className="py-2.5 px-3">Rate</th>
@@ -2081,7 +2079,8 @@ export default function PurchasePage() {
                                 <Boxes className="w-3 h-3" /> {li.batchNumber}
                               </span>
                             </td>
-                            <td className="py-2.5 px-3 text-slate-600">{li.expiryDate}</td>
+                            <td className="py-2.5 px-3 text-slate-500">{li.manufacturingDate || "—"}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{li.expiryDate || "—"}</td>
                             <td className="py-2.5 px-3 font-semibold text-slate-800 text-center">{li.quantity}</td>
                             <td className="py-2.5 px-3 text-slate-600">{rs(Number(li.purchaseRate))}</td>
                             <td className="py-2.5 px-3 text-slate-600">{rs(Number(li.mrp))}</td>
@@ -2494,7 +2493,7 @@ export default function PurchasePage() {
                         <tbody className="block divide-y divide-slate-100 lg:table-row-group">
                           {form.items.map((line, idx) => {
                             const isExpanded = expandedLineIds.includes(line.id);
-                            const hasValidBatch = line.batch && line.batch.batchNo.trim() !== "" && line.batch.expDate.trim() !== "";
+                            const hasValidBatch = line.batch && line.batch.batchNo.trim() !== "";
                             const isMissingBatch = !!line.itemId && n(line.qty) > 0 && !hasValidBatch;
 
                             return (
@@ -2652,8 +2651,8 @@ export default function PurchasePage() {
                                               className="h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[#044d73] focus:outline-none" />
                                           </div>
                                           <div>
-                                            <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Exp. Date *</label>
-                                            <input type="date" required
+                                            <label className="mb-1 block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Exp. Date</label>
+                                            <input type="date"
                                               value={line.batch?.expDate || ""}
                                               onChange={e => updateLineBatch(line.id, { expDate: e.target.value })}
                                               className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:border-[#044d73] focus:outline-none" />
@@ -2727,10 +2726,10 @@ export default function PurchasePage() {
                     </div>
                   </div>
 
-                  {(missingBatch || missingExpiry) && (
+                  {missingBatch && (
                     <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 p-2.5 px-3 text-xs text-amber-700">
                       <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-                      <span>Batch No. and Expiry Date are required on every item row before saving.</span>
+                      <span>Batch No. is required on every item row before saving.</span>
                     </div>
                   )}
                 </Section>
@@ -2868,7 +2867,7 @@ export default function PurchasePage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving || !form.partyId || validItems.length === 0 || missingBatch || missingExpiry}
+                  disabled={saving || !form.partyId || validItems.length === 0 || missingBatch}
                   className="flex-1 rounded-lg bg-[#044d73] hover:bg-[#033f60] py-2.5 text-sm font-medium text-white shadow-sm transition-colors disabled:opacity-40"
                 >
                   {saving ? "Saving..." : editingPurchaseId ? "Save Changes" : "Save Purchase"}

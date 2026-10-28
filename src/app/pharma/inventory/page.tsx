@@ -36,14 +36,14 @@ export interface ApiBatch {
   id: string;
   batchNumber: string;
   manufacturingDate: string | null;
-  expiryDate: string;
+  expiryDate: string | null;
   purchasePrice: string;
   mrp: string;
   salePrice: string | null;
   quantityReceived: number;
   quantityAvailable: number;
   status: "ACTIVE" | "NEAR_EXPIRY" | "EXPIRED";
-  daysLeft: number; // negative once expired
+  daysLeft: number | null; // negative once expired, null if no expiry date
   party?: { id: string; name: string } | null;
   note?: string | null;
   notes?: string | null;
@@ -203,8 +203,9 @@ const EXPIRY_STATUS_LABEL: Record<ApiBatch["status"], string> = {
   ACTIVE: "Active",
 };
 
-function formatExpiryLabel(status: ApiBatch["status"], daysLeft: number): string {
+function formatExpiryLabel(status: ApiBatch["status"], daysLeft: number | null): string {
   const statusLabel = EXPIRY_STATUS_LABEL[status];
+  if (daysLeft === null) return statusLabel;
   if (status === "EXPIRED") return `${statusLabel} · ${Math.abs(daysLeft)}d ago`;
   if (daysLeft === 0) return `${statusLabel} · expires today`;
   return `${statusLabel} · ${daysLeft}d left`;
@@ -603,7 +604,7 @@ export default function InventoryPage() {
       (b) =>
         b.batchNumber.toLowerCase().includes(q) ||
         (b.party?.name ?? "").toLowerCase().includes(q) ||
-        b.expiryDate.toLowerCase().includes(q) ||
+        (b.expiryDate ?? "").toLowerCase().includes(q) ||
         (b.manufacturingDate ?? "").toLowerCase().includes(q) ||
         EXPIRY_STATUS_LABEL[b.status].toLowerCase().includes(q) ||
         (b.note ?? "").toLowerCase().includes(q),
@@ -1383,7 +1384,7 @@ export default function InventoryPage() {
                                       </span>
                                     </td>
                                     <td className="py-3 px-3 font-medium text-slate-700">
-                                      {b.expiryDate}
+                                      {b.expiryDate || "—"}
                                     </td>
                                     <td className="py-3 px-3 text-slate-500">
                                       {b.manufacturingDate || "—"}

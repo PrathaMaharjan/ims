@@ -41,7 +41,8 @@ export interface BatchItem {
   productName: string;
   unit: string;
   partyName: string | null;
-  expiryDate: string; // e.g. "2026-10-12"
+  manufacturingDate?: string | null;
+  expiryDate: string | null; // e.g. "2026-10-12"
   daysLeft: number;
   quantityAvailable: number;
   purchasePrice: number;
@@ -55,7 +56,7 @@ export interface BatchItem {
 export interface ProductBatch {
   id: string;
   batchNumber: string;
-  expiryDate: string;
+  expiryDate: string | null;
   quantityAvailable: number;
   note?: string | null;
   manufacturingDate?: string | null;
@@ -251,6 +252,7 @@ export default function BatchesPage() {
   const [editingBatch, setEditingBatch] = useState<BatchItem | null>(null);
   const [editForm, setEditForm] = useState({
     batchNumber: "",
+    manufacturingDate: "",
     expiryDate: "",
     quantityAvailable: 0,
     purchasePrice: 0,
@@ -270,7 +272,8 @@ export default function BatchesPage() {
     setEditingBatch(batch);
     setEditForm({
       batchNumber: batch.batchNumber,
-      expiryDate: batch.expiryDate,
+      manufacturingDate: batch.manufacturingDate ?? (batch as any).manufacturingDate ?? "",
+      expiryDate: batch.expiryDate ?? "",
       quantityAvailable: batch.quantityAvailable,
       purchasePrice: batch.purchasePrice,
       mrp: (batch as any).mrp ? String((batch as any).mrp) : "",
@@ -292,7 +295,8 @@ export default function BatchesPage() {
     const cost = Math.max(0, Number(editForm.purchasePrice) || 0);
     const body: Record<string, unknown> = {
       batchNumber: editForm.batchNumber.trim(),
-      expiryDate: editForm.expiryDate,
+      manufacturingDate: editForm.manufacturingDate || null,
+      expiryDate: editForm.expiryDate || null,
       quantityAvailable: qty,
       purchasePrice: cost,
       note: editForm.note.trim() || null,
@@ -312,7 +316,8 @@ export default function BatchesPage() {
           ? {
             ...prev,
             batchNumber: editForm.batchNumber.trim(),
-            expiryDate: editForm.expiryDate,
+            manufacturingDate: editForm.manufacturingDate || null,
+            expiryDate: editForm.expiryDate || null,
             quantityAvailable: qty,
             purchasePrice: cost,
             valueAtRisk: qty * cost,
@@ -504,11 +509,11 @@ export default function BatchesPage() {
         resolution === "MONEY"
           ? { resolutionType: "MONEY", resolutionAmount: amount ? Number(amount) : defaultAmount }
           : {
-              resolutionType: "QUANTITY",
-              resolvedBatchId: ret.batchId,
-              expiryDate: newExpiry,
-              manufacturingDate: newMfg || undefined,
-            };
+            resolutionType: "QUANTITY",
+            resolvedBatchId: ret.batchId,
+            expiryDate: newExpiry,
+            manufacturingDate: newMfg || undefined,
+          };
       await api.patch(`/api/purchases/returns/${completingId}`, body);
       setCompletingId(null);
       setAmount("");
@@ -571,7 +576,9 @@ export default function BatchesPage() {
         (b) =>
           b.batchNumber?.toLowerCase().includes(q) ||
           b.productName?.toLowerCase().includes(q) ||
-          b.partyName?.toLowerCase().includes(q),
+          b.partyName?.toLowerCase().includes(q) ||
+          b.manufacturingDate?.toLowerCase().includes(q) ||
+          b.expiryDate?.toLowerCase().includes(q),
       );
     }
     if (actionFilter !== "all") {
@@ -730,6 +737,7 @@ export default function BatchesPage() {
               <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                 <th className="py-3 px-4">Batch & Product</th>
                 <th className="py-3 px-4">Supplier</th>
+                <th className="py-3 px-4">Mfg Date</th>
                 <th className="py-3 px-4">Expiry Date</th>
                 <th className="py-3 px-4">Countdown</th>
                 <th className="py-3 px-4">Available Qty</th>
@@ -743,7 +751,7 @@ export default function BatchesPage() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="py-16 text-center text-sm text-slate-400"
                   >
                     Loading batches...
@@ -752,7 +760,7 @@ export default function BatchesPage() {
               ) : filteredBatches.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="py-16 text-center text-sm text-slate-400"
                   >
                     {searchQuery
@@ -798,8 +806,11 @@ export default function BatchesPage() {
                           <span className="text-slate-400 text-xs">—</span>
                         )}
                       </td>
+                      <td className="py-3 px-4 text-slate-500">
+                        {b.manufacturingDate || "—"}
+                      </td>
                       <td className="py-3 px-4 text-slate-600 font-medium">
-                        {b.expiryDate}
+                        {b.expiryDate || "—"}
                       </td>
                       <td className="py-3 px-4">
                         <span
@@ -1270,8 +1281,7 @@ export default function BatchesPage() {
                                         (resolution === "QUANTITY" &&
                                           (!newExpiry ||
                                             newExpiry < tomorrow() ||
-                                            !newMfg ||
-                                            newMfg >= newExpiry))
+                                            Boolean(newMfg && newMfg >= newExpiry)))
                                       }
                                       className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-40"
                                     >
@@ -1471,14 +1481,18 @@ export default function BatchesPage() {
                         {selectedBatch.partyName || "Not linked to a supplier"}
                       </span>
                     </div>
-                    {extra?.manufacturingDate && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">Manufacturing Date</span>
-                        <span className="font-semibold text-slate-800">
-                          {extra.manufacturingDate}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Manufacturing Date</span>
+                      <span className="font-semibold text-slate-800">
+                        {selectedBatch.manufacturingDate || extra?.manufacturingDate || "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Expiry Date</span>
+                      <span className="font-semibold text-slate-800">
+                        {selectedBatch.expiryDate || "—"}
+                      </span>
+                    </div>
                     {extra?.mrp && (
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500">MRP</span>
@@ -1691,18 +1705,32 @@ export default function BatchesPage() {
                     />
                   </div>
 
-                  {/* Expiry Date */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Expiry Date <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={editForm.expiryDate}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, expiryDate: e.target.value }))}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Manufacturing Date */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                        Mfg. Date
+                      </label>
+                      <input
+                        type="date"
+                        value={editForm.manufacturingDate}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, manufacturingDate: e.target.value }))}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                      />
+                    </div>
+
+                    {/* Expiry Date */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                        Expiry Date
+                      </label>
+                      <input
+                        type="date"
+                        value={editForm.expiryDate}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, expiryDate: e.target.value }))}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#044d73] focus:border-transparent transition-all"
+                      />
+                    </div>
                   </div>
 
                   {/* Available Stock */}

@@ -15,6 +15,13 @@
       "when": 1791359196217,
       "tag": "0001_sale_items_vat_applicable",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793171511506,
+      "tag": "0002_majestic_kid_colt",
+      "breakpoints": true
     }
   ]
 }

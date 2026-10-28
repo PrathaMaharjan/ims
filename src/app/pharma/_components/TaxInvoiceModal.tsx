@@ -18,7 +18,7 @@ export interface InvoiceItem {
   rate: number;
   amount: number;
   batchNumber?: string;
-  expiryDate?: string;
+  expiryDate?: string | null;
 }
 
 export interface TaxInvoiceData {

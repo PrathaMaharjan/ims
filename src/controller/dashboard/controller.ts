@@ -156,7 +156,7 @@ export async function getInventoryStatus(organizationId: string): Promise<Invent
         eq(batches.organizationId, organizationId),
         eq(products.isActive, true),
         sql`${batches.quantityAvailable} > 0`,
-        sql`${batches.expiryDate} <= CURRENT_DATE + ${NEAR_EXPIRY_DAYS}::int`,
+        sql`${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} <= CURRENT_DATE + ${NEAR_EXPIRY_DAYS}::int`,
       ),
     );
  
@@ -211,7 +211,7 @@ export async function getCriticalWatchlist(
       and(
         eq(batches.organizationId, organizationId),
         sql`${batches.quantityAvailable} > 0`,
-        sql`${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int`,
+        sql`${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} <= CURRENT_DATE + ${withinDays}::int`,
       ),
     )
     .orderBy(batches.expiryDate);
@@ -252,7 +252,8 @@ export async function getCriticalWatchlist(
   return items;
 }
 
-function daysUntil(expiryDate: string): number {
+function daysUntil(expiryDate?: string | null): number {
+  if (!expiryDate) return 999999;
   const [y, m, d] = expiryDate.split("-").map(Number);
   const expiry = Date.UTC(y, m - 1, d);
   const now = new Date();

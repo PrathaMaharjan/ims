@@ -236,7 +236,7 @@ export async function createSale(
             and(
               eq(batches.id, batchId),
               sql`${batches.quantityAvailable} >= ${quantity}`,
-              sql`${batches.expiryDate} >= CURRENT_DATE`,
+              sql`(${batches.expiryDate} IS NULL OR ${batches.expiryDate} >= CURRENT_DATE)`,
             )
           )
           .returning({ id: batches.id });

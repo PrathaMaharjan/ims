@@ -53,7 +53,7 @@ export const purchaseItems = pgTable("purchase_items", {
   batchNumber: varchar("batch_number", { length: 100 }).notNull(),
 
   manufacturingDate: date("manufacturing_date"),
-  expiryDate: date("expiry_date").notNull(),
+  expiryDate: date("expiry_date"),
   quantity: integer("quantity").notNull(),
   purchaseRate: numeric("purchase_rate", { precision: 12, scale: 2 }).notNull(),
   mrp: numeric("mrp", { precision: 12, scale: 2 }).notNull(),

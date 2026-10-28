@@ -89,7 +89,8 @@ interface Product {
 interface ApiBatch {
   id: string;
   batchNumber: string;
-  expiryDate: string;
+  manufacturingDate?: string | null;
+  expiryDate: string | null;
   quantityAvailable: number;
   mrp: string;
   salePrice: string | null;
@@ -178,7 +179,7 @@ interface SaleRecord {
     vatAmount?: string;
     vatApplicable?: boolean;
     lineTotal: string;
-    batch?: { batchNumber: string; expiryDate: string } | null;
+    batch?: { batchNumber: string; expiryDate: string | null } | null;
   }>;
   payments?: Array<{
     id: string;
@@ -647,16 +648,19 @@ function BatchPicker({
         <option value="">Select batch...</option>
         {batches.map((b) => (
           <option key={b.id} value={b.id}>
-            {b.batchNumber} · Exp: {b.expiryDate} (Stock: {b.quantityAvailable} {unit}) - {rs(Number(b.salePrice ?? b.mrp))}
+            {b.batchNumber}{b.manufacturingDate ? ` · Mfg: ${b.manufacturingDate}` : ""}{b.expiryDate ? ` · Exp: ${b.expiryDate}` : ""} (Stock: {b.quantityAvailable} {unit}) - {rs(Number(b.salePrice ?? b.mrp))}
           </option>
         ))}
       </select>
 
       {selected && (
         <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span>Exp: <strong className="font-medium text-slate-700">{selected.expiryDate}</strong></span>
-            {selected.id === soonestId && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-600">Earliest Expiry</span>}
+          <span className="flex items-center gap-2">
+            {selected.manufacturingDate && (
+              <span>Mfg: <strong className="font-medium text-slate-700">{selected.manufacturingDate}</strong></span>
+            )}
+            <span>Exp: <strong className="font-medium text-slate-700">{selected.expiryDate || "N/A"}</strong></span>
+            {selected.expiryDate && selected.id === soonestId && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-600">Earliest Expiry</span>}
           </span>
           <span className="font-medium text-slate-600">Stock: {selected.quantityAvailable} {unit}</span>
         </div>
@@ -966,7 +970,7 @@ export default function SalesPage() {
         rate: Number(li.salePrice),
         amount: amt,
         batchNumber: li.batch?.batchNumber,
-        expiryDate: li.batch?.expiryDate,
+        expiryDate: li.batch?.expiryDate || undefined,
       };
     });
 
@@ -1144,7 +1148,7 @@ export default function SalesPage() {
     updateLine(lineId, {
       batchId: batch.id,
       batchNo: batch.batchNumber,
-      batchExpDate: batch.expiryDate,
+      batchExpDate: batch.expiryDate ?? "",
       batchStock: batch.quantityAvailable,
       price: batch.salePrice ? Number(batch.salePrice) : Number(batch.mrp),
     });

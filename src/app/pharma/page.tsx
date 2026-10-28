@@ -535,7 +535,7 @@ export default function DashboardPage() {
                                         </div>
                                         {item.batchNumber && (
                                             <p className="text-[11px] text-slate-400 mt-0.5">
-                                                Batch: {item.batchNumber} · Exp: {item.expiryDate}
+                                                Batch: {item.batchNumber}{item.expiryDate ? ` · Exp: ${item.expiryDate}` : ""}
                                                 {item.daysLeft !== undefined && item.daysLeft !== null && (
                                                     <span className={`ml-1 font-medium ${item.daysLeft < 0 ? "text-red-500" : "text-amber-600"}`}>
                                                         ({item.daysLeft < 0 ? `Expired ${Math.abs(item.daysLeft)}d ago` : `${item.daysLeft}d left`})

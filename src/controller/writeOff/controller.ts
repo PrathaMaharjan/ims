@@ -107,7 +107,7 @@ export async function createWriteOff(organizationId: string, userId: string, inp
       batchNumber: batches.batchNumber,
       purchasePrice: batches.purchasePrice,
       quantityAvailable: batches.quantityAvailable,
-      isExpired: sql<boolean>`${batches.expiryDate} < CURRENT_DATE`,
+      isExpired: sql<boolean>`${batches.expiryDate} IS NOT NULL AND ${batches.expiryDate} < CURRENT_DATE`,
     })
     .from(batches)
     .where(and(eq(batches.id, input.batchId), eq(batches.organizationId, organizationId)))

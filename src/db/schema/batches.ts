@@ -23,7 +23,7 @@ export const batches = pgTable("batches", {
   note: text("note"),
   batchNumber: varchar("batch_number", { length: 100 }).notNull(),
   manufacturingDate: date("manufacturing_date"),
-  expiryDate: date("expiry_date").notNull(),
+  expiryDate: date("expiry_date"),
   purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }).notNull(),
   mrp: numeric("mrp", { precision: 12, scale: 2 }).notNull(),
   salePrice: numeric("sale_price", { precision: 12, scale: 2 }),

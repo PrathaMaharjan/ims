@@ -258,12 +258,15 @@ function emptyForm(): PurchaseForm {
 
 const n = (v: Num) => (v === "" ? 0 : v);
 const rs = (v: number) => `Rs. ${v.toFixed(2)}`;
+// Same 2-decimal rounding the server applies (controller.ts round2), so the
+// entry-screen total matches the saved total.
+const round2 = (v: number) => Math.round(v * 100) / 100;
 
 function lineAmount(li: LineItemForm) {
-  return n(li.qty) * n(li.price);
+  return round2(n(li.qty) * n(li.price));
 }
 function subtotalOf(items: LineItemForm[]) {
-  return items.reduce((s, li) => s + lineAmount(li), 0);
+  return round2(items.reduce((s, li) => s + lineAmount(li), 0));
 }
 function discountValue(d: DiscountRowForm, subtotal: number) {
   return d.type === "Percentage" ? (subtotal * n(d.amount)) / 100 : n(d.amount);
@@ -295,7 +298,7 @@ function calculateAdjustmentsBreakdown(
   }
 
   // Base raw total before rounding adjustments
-  const baseBeforeRound = subtotal - discountTotal + freightTotal + vatEstimate - vatRefundTotal;
+  const baseBeforeRound = round2(subtotal - discountTotal + freightTotal + vatEstimate - vatRefundTotal);
 
   const roundPlusRow = discounts.find((d) => d.category === "Rounded off (+)");
   const roundMinusRow = discounts.find((d) => d.category === "Rounded off (-)");
@@ -340,9 +343,9 @@ function estimateVat(items: LineItemForm[], purcType: PurcType, vatRate: Num) {
       (s, li) => (li.vatApplicable ? s + lineAmount(li) : s),
       0
     );
-    return (vatableSubtotal * rate) / 100;
+    return round2((vatableSubtotal * rate) / 100);
   }
-  return subtotal - subtotal / (1 + rate / 100);
+  return round2(subtotal - subtotal / (1 + rate / 100));
 }
 
 /* ------------------------------------------------------------------ */
@@ -1324,9 +1327,6 @@ export default function PurchasePage() {
   const subtotal = subtotalOf(form.items);
   const vatEstimate = estimateVat(form.items, form.purcType, form.vatRate);
   const adjustments = calculateAdjustmentsBreakdown(form.discounts, subtotal, vatEstimate);
-  const hasRoundingAdjustment = form.discounts.some(
-    (d) => d.category === "Rounded off (-)" || d.category === "Rounded off (+)"
-  );
   const rawTotalEstimate =
     subtotal -
     adjustments.discountTotal +
@@ -1335,11 +1335,9 @@ export default function PurchasePage() {
     adjustments.vatRefundTotal -
     adjustments.roundOffMinusTotal +
     adjustments.roundOffPlusTotal;
-  const grandTotalEstimate = hasRoundingAdjustment
-    ? (adjustments.effectiveRoundingDirection === "UP"
-      ? Math.ceil(rawTotalEstimate)
-      : Math.floor(rawTotalEstimate))
-    : rawTotalEstimate;
+  // Rounding adjustments are already inside rawTotalEstimate; the server just
+  // sums them and rounds to 2 decimals, so do the same (no extra floor/ceil).
+  const grandTotalEstimate = round2(rawTotalEstimate);
 
   function buildPayload() {
     const roundOffValue =

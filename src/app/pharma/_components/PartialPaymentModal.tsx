@@ -55,7 +55,10 @@ export function PartialPaymentModal({
   const [error, setError] = useState<string | null>(null);
 
   const paidSoFar = Math.max(0, alreadyPaid);
-  const currentDue = Math.max(0, totalAmount - paidSoFar);
+  // Round to 2 decimals: plain subtraction can give e.g. 667.0699999999999,
+  // which makes the input's max smaller than the 667.07 it is pre-filled with
+  // and the browser blocks the payment.
+  const currentDue = Math.round(Math.max(0, totalAmount - paidSoFar) * 100) / 100;
 
   useEffect(() => {
     if (isOpen) {

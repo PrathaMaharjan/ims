@@ -893,7 +893,7 @@ export default function PurchasePage() {
     const total = parseFloat(p.grandTotal) || 0;
     const paid = (p.payments ?? []).reduce((sum, pay) => sum + (parseFloat(String(pay.amount)) || 0), 0);
     const effectivePaid = p.paymentStatus === "PAID" && paid === 0 ? total : paid;
-    const remaining = p.paymentStatus === "PAID" ? 0 : Math.max(0, total - effectivePaid);
+    const remaining = p.paymentStatus === "PAID" ? 0 : round2(Math.max(0, total - effectivePaid));
     return { total, paid: effectivePaid, remaining };
   }
 

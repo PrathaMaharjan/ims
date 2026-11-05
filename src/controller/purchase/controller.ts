@@ -50,11 +50,13 @@ export function calculatePurchaseTotals(
     vatAmount = round2(subtotal - subtotal / (1 + input.vatRate / 100));
   }
 
+  const vatToAdd = input.purcType === "VAT_TAX_INCL" ? 0 : vatAmount;
+
   const afterAdjustments =
     subtotal -
     input.discount +
     input.freightCharges +
-    vatAmount -
+    vatToAdd -
     input.vatRefund +
     (input.roundOff ?? 0);
 

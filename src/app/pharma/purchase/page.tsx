@@ -271,7 +271,8 @@ function discountValue(d: DiscountRowForm, subtotal: number) {
 function calculateAdjustmentsBreakdown(
   discounts: DiscountRowForm[],
   subtotal: number,
-  vatEstimate: number
+  vatEstimate: number,
+  purcType: PurcType = "VAT_EXEMPT"
 ) {
   let discountTotal = 0;
   let freightTotal = 0;
@@ -294,8 +295,10 @@ function calculateAdjustmentsBreakdown(
     }
   }
 
+  const vatToAdd = purcType === "VAT_TAX_INCL" ? 0 : vatEstimate;
+
   // Base raw total before rounding adjustments
-  const baseBeforeRound = subtotal - discountTotal + freightTotal + vatEstimate - vatRefundTotal;
+  const baseBeforeRound = subtotal - discountTotal + freightTotal + vatToAdd - vatRefundTotal;
 
   const roundPlusRow = discounts.find((d) => d.category === "Rounded off (+)");
   const roundMinusRow = discounts.find((d) => d.category === "Rounded off (-)");
@@ -1134,7 +1137,10 @@ export default function PurchasePage() {
     });
 
     const discount = Number(purchase.discount || 0);
-    const taxableAmount = Math.max(0, vatableTotal - discount);
+    const vatAmt = Number(purchase.vatAmount || 0);
+    const taxableAmount = purchase.purcType === "VAT_TAX_INCL"
+      ? Math.max(0, vatableTotal - discount - vatAmt)
+      : Math.max(0, vatableTotal - discount);
 
     setPrintInvoiceData({
       type: "PURCHASE",
@@ -1150,7 +1156,7 @@ export default function PurchasePage() {
       discount,
       freightCharges: Number(purchase.freightCharges || 0),
       vatRefund: Number(purchase.vatRefund || 0),
-      taxableAmount: Number(purchase.vatAmount) > 0 ? taxableAmount : (vatableTotal > 0 ? taxableAmount : 0),
+      taxableAmount: vatAmt > 0 ? taxableAmount : (vatableTotal > 0 ? taxableAmount : 0),
       nonTaxableAmount: nonVatableTotal,
       vatAmount: Number(purchase.vatAmount || 0),
       roundOff: Number(purchase.roundOff || 0),
@@ -1323,15 +1329,16 @@ export default function PurchasePage() {
 
   const subtotal = subtotalOf(form.items);
   const vatEstimate = estimateVat(form.items, form.purcType, form.vatRate);
-  const adjustments = calculateAdjustmentsBreakdown(form.discounts, subtotal, vatEstimate);
+  const adjustments = calculateAdjustmentsBreakdown(form.discounts, subtotal, vatEstimate, form.purcType);
   const hasRoundingAdjustment = form.discounts.some(
     (d) => d.category === "Rounded off (-)" || d.category === "Rounded off (+)"
   );
+  const vatToAdd = form.purcType === "VAT_TAX_INCL" ? 0 : vatEstimate;
   const rawTotalEstimate =
     subtotal -
     adjustments.discountTotal +
     adjustments.freightTotal +
-    vatEstimate -
+    vatToAdd -
     adjustments.vatRefundTotal -
     adjustments.roundOffMinusTotal +
     adjustments.roundOffPlusTotal;
@@ -2131,7 +2138,7 @@ export default function PurchasePage() {
                 )}
                 {Number(viewingPurchase.vatAmount) > 0 && (
                   <div className="flex justify-between text-xs text-slate-500">
-                    <span>VAT</span><span>{rs(Number(viewingPurchase.vatAmount))}</span>
+                    <span>{viewingPurchase.purcType === "VAT_TAX_INCL" ? "VAT (Included in subtotal)" : "VAT"}</span><span>{rs(Number(viewingPurchase.vatAmount))}</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold text-slate-800">
@@ -2852,7 +2859,7 @@ export default function PurchasePage() {
                     </div>
                   )}
                   <div className="flex justify-between text-xs sm:text-sm text-slate-500">
-                    <span>VAT (estimate)</span><span>{rs(vatEstimate)}</span>
+                    <span>{form.purcType === "VAT_TAX_INCL" ? "VAT (Included in subtotal)" : "VAT (estimate)"}</span><span>{rs(vatEstimate)}</span>
                   </div>
                   <div className="flex justify-between border-t border-slate-200 pt-2 text-sm sm:text-base font-bold text-slate-800">
                     <span>Grand Total (estimate)</span><span className="text-[#044d73]">{rs(grandTotalEstimate)}</span>

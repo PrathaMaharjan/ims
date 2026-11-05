@@ -258,12 +258,15 @@ function emptyForm(): PurchaseForm {
 
 const n = (v: Num) => (v === "" ? 0 : v);
 const rs = (v: number) => `Rs. ${v.toFixed(2)}`;
+// Same 2-decimal rounding the server applies (controller.ts round2), so the
+// entry-screen total matches the saved total.
+const round2 = (v: number) => Math.round(v * 100) / 100;
 
 function lineAmount(li: LineItemForm) {
-  return n(li.qty) * n(li.price);
+  return round2(n(li.qty) * n(li.price));
 }
 function subtotalOf(items: LineItemForm[]) {
-  return items.reduce((s, li) => s + lineAmount(li), 0);
+  return round2(items.reduce((s, li) => s + lineAmount(li), 0));
 }
 function discountValue(d: DiscountRowForm, subtotal: number) {
   return d.type === "Percentage" ? (subtotal * n(d.amount)) / 100 : n(d.amount);
@@ -298,7 +301,7 @@ function calculateAdjustmentsBreakdown(
   const vatToAdd = purcType === "VAT_TAX_INCL" ? 0 : vatEstimate;
 
   // Base raw total before rounding adjustments
-  const baseBeforeRound = subtotal - discountTotal + freightTotal + vatToAdd - vatRefundTotal;
+  const baseBeforeRound = round2(subtotal - discountTotal + freightTotal + vatEstimate - vatRefundTotal);
 
   const roundPlusRow = discounts.find((d) => d.category === "Rounded off (+)");
   const roundMinusRow = discounts.find((d) => d.category === "Rounded off (-)");
@@ -343,9 +346,9 @@ function estimateVat(items: LineItemForm[], purcType: PurcType, vatRate: Num) {
       (s, li) => (li.vatApplicable ? s + lineAmount(li) : s),
       0
     );
-    return (vatableSubtotal * rate) / 100;
+    return round2((vatableSubtotal * rate) / 100);
   }
-  return subtotal - subtotal / (1 + rate / 100);
+  return round2(subtotal - subtotal / (1 + rate / 100));
 }
 
 /* ------------------------------------------------------------------ */
@@ -577,11 +580,11 @@ function SupplierPicker({
   const activeSuppliers = suppliers.filter((s) => Boolean(s.status));
   const filtered = query.trim()
     ? activeSuppliers.filter(
-        (s) =>
-          s.name.toLowerCase().includes(query.toLowerCase()) ||
-          (s.phone ?? "").includes(query) ||
-          (s.panVatNumber ?? "").includes(query)
-      )
+      (s) =>
+        s.name.toLowerCase().includes(query.toLowerCase()) ||
+        (s.phone ?? "").includes(query) ||
+        (s.panVatNumber ?? "").includes(query)
+    )
     : activeSuppliers;
 
   const exactMatch = activeSuppliers.some((s) => s.name.toLowerCase() === query.trim().toLowerCase());
@@ -659,9 +662,8 @@ function SupplierPicker({
                     setOpen(false);
                     setQuery("");
                   }}
-                  className={`flex items-center justify-between px-3.5 py-2 text-left text-xs hover:bg-slate-50 cursor-pointer transition-colors ${
-                    value === s.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
-                  }`}
+                  className={`flex items-center justify-between px-3.5 py-2 text-left text-xs hover:bg-slate-50 cursor-pointer transition-colors ${value === s.id ? "bg-[#044d73]/5 font-semibold text-[#044d73]" : "text-slate-700"
+                    }`}
                 >
                   <div className="min-w-0">
                     <p className="font-medium text-slate-800 truncate">{s.name}</p>
@@ -1334,6 +1336,7 @@ export default function PurchasePage() {
     (d) => d.category === "Rounded off (-)" || d.category === "Rounded off (+)"
   );
   const vatToAdd = form.purcType === "VAT_TAX_INCL" ? 0 : vatEstimate;
+
   const rawTotalEstimate =
     subtotal -
     adjustments.discountTotal +
@@ -1342,11 +1345,9 @@ export default function PurchasePage() {
     adjustments.vatRefundTotal -
     adjustments.roundOffMinusTotal +
     adjustments.roundOffPlusTotal;
-  const grandTotalEstimate = hasRoundingAdjustment
-    ? (adjustments.effectiveRoundingDirection === "UP"
-      ? Math.ceil(rawTotalEstimate)
-      : Math.floor(rawTotalEstimate))
-    : rawTotalEstimate;
+  // Rounding adjustments are already inside rawTotalEstimate; the server just
+  // sums them and rounds to 2 decimals, so do the same (no extra floor/ceil).
+  const grandTotalEstimate = round2(rawTotalEstimate);
 
   function buildPayload() {
     const roundOffValue =
@@ -2556,11 +2557,10 @@ export default function PurchasePage() {
                                   <td className="order-7 lg:order-0 lg:py-3 lg:px-2 lg:text-center">
                                     <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:hidden">VAT</span>
                                     <label
-                                      className={`inline-flex items-center gap-1.5 select-none py-1.5 px-2 rounded-lg transition-colors ${
-                                        form.purcType === "VAT_TAX_INCL"
-                                          ? "cursor-not-allowed opacity-90"
-                                          : "cursor-pointer hover:bg-slate-100/80"
-                                      }`}
+                                      className={`inline-flex items-center gap-1.5 select-none py-1.5 px-2 rounded-lg transition-colors ${form.purcType === "VAT_TAX_INCL"
+                                        ? "cursor-not-allowed opacity-90"
+                                        : "cursor-pointer hover:bg-slate-100/80"
+                                        }`}
                                       title={form.purcType === "VAT_TAX_INCL" ? "VAT is permanently enabled for Tax Inclusive purchases" : undefined}
                                     >
                                       <input
@@ -2571,13 +2571,11 @@ export default function PurchasePage() {
                                           if (form.purcType === "VAT_TAX_INCL") return;
                                           updateLine(line.id, { vatApplicable: e.target.checked });
                                         }}
-                                        className={`h-4 w-4 rounded border-slate-300 text-[#044d73] focus:ring-[#044d73] ${
-                                          form.purcType === "VAT_TAX_INCL" ? "cursor-not-allowed text-[#044d73]" : "cursor-pointer"
-                                        }`}
+                                        className={`h-4 w-4 rounded border-slate-300 text-[#044d73] focus:ring-[#044d73] ${form.purcType === "VAT_TAX_INCL" ? "cursor-not-allowed text-[#044d73]" : "cursor-pointer"
+                                          }`}
                                       />
-                                      <span className={`text-[11px] font-bold ${
-                                        (form.purcType === "VAT_TAX_INCL" || line.vatApplicable) ? "text-emerald-600" : "text-slate-400"
-                                      }`}>
+                                      <span className={`text-[11px] font-bold ${(form.purcType === "VAT_TAX_INCL" || line.vatApplicable) ? "text-emerald-600" : "text-slate-400"
+                                        }`}>
                                         {(form.purcType === "VAT_TAX_INCL" || line.vatApplicable) ? `${form.vatRate || 13}%` : "0%"}
                                       </span>
                                     </label>
